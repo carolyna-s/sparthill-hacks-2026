@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, status_badge %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">Welcome, {{ current_user.name.split()[0] }}</h1>
+<div class="grid md:grid-cols-2 gap-5">
+  <div>
+    {% call card("Getting started") %}
+    <ol class="text-sm space-y-2">
+      <li>1. <a class="text-indigo-600" href="{{ url_for('intake.profile') }}">Complete your profile</a>
+        {% if current_user.profile.career_interests %}✓{% endif %}</li>
+      <li>2. <a class="text-indigo-600" href="{{ url_for('intake.agreements') }}">Sign agreements</a>
+        {% if not unsigned %}✓{% else %}<span class="text-amber-700">({{ unsigned|length }} to sign)</span>{% endif %}</li>
+      <li>3. <a class="text-indigo-600" href="{{ url_for('intake.apply') }}">Submit your application</a>
+        {% if application %}{{ status_badge(application.status) }}{% endif %}</li>
+    </ol>
+    {% endcall %}
+    {% call card("Your " ~ ("mentor" if current_user.role == "mentee" else "mentees")) %}
+      {% for m in matches %}
+        <div class="flex justify-between items-center text-sm py-1">
+          <span>{{ m.other(current_user).name }}</span>
+          <a class="text-indigo-600" href="{{ url_for('program.messages', match_id=m.id) }}">Message</a>
+        </div>
+      {% else %}<p class="text-sm text-slate-500">No match yet. Staff will match you after your application is accepted.</p>{% endfor %}
+    {% endcall %}
+  </div>
+  <div>
+    {% call card("To do") %}
+      {% for e, kind in todo %}
+        <a href="{{ url_for('program.event', event_id=e.id) }}" class="block text-sm py-1">
+          <span class="font-medium">{{ kind|capitalize }}</span> for {{ e.title }}
+          <span class="text-slate-500">· due {{ e[kind ~ '_due'].strftime('%b %d') }}</span></a>
+      {% else %}<p class="text-sm text-slate-500">Nothing due.</p>{% endfor %}
+    {% endcall %}
+    {% call card("Upcoming events") %}
+      {% for e in upcoming %}
+        <a href="{{ url_for('program.event', event_id=e.id) }}" class="block text-sm py-1">{{ e.title }}
+          <span class="text-slate-500">· {{ e.starts_at.strftime('%a %b %d, %H:%M') }}</span></a>
+      {% else %}<p class="text-sm text-slate-500">No upcoming events.</p>{% endfor %}
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}

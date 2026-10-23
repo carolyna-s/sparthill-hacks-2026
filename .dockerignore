@@ -1,0 +1,23 @@
+# Local environment and secrets (App Runner injects env vars)
+.venv
+.env
+.env.*
+.git
+.gitignore
+
+# Local data and caches
+instance
+data
+__pycache__
+.pytest_cache
+.coverage
+htmlcov
+
+# Not needed at runtime
+docs
+tests
+requirements-dev.txt
+docker-compose.yml
+.vscode
+.idea
+.DS_Store

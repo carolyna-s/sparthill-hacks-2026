@@ -1,0 +1,11 @@
+{% macro pct(x) %}{{ '—' if x is none else ((x * 100)|round|int ~ '%') }}{% endmacro %}
+{% macro avg(x) %}{{ '—' if x is none else ('%.1f'|format(x)) }}{% endmacro %}
+
+{% macro summary(report) %}
+<dl class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 text-sm">
+  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Participants</dt><dd class="text-2xl font-semibold">{{ report.participants }}</dd></div>
+  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Active matches</dt><dd class="text-2xl font-semibold">{{ report.active_matches }}</dd></div>
+  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Matches messaging</dt><dd class="text-2xl font-semibold">{{ pct(report.messaging_rate) }}</dd></div>
+  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Avg match rating</dt><dd class="text-2xl font-semibold">{{ avg(report.avg_match_rating) }}</dd></div>
+</dl>
+{% endmacro %}

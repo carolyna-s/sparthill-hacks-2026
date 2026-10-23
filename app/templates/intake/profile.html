@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, tag_picker, input_cls %}
+{% set mentor = current_user.role == 'mentor' %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">Your profile</h1>
+<form method="post">
+  {{ csrf() }}
+  {% call card("About you") %}
+  <div class="grid md:grid-cols-2 gap-3 mb-3">
+    <input name="headline" value="{{ p.headline }}" placeholder="{{ 'Current role' if mentor else 'Student / current role' }}" class="{{ input_cls() }}">
+    <input name="organization" value="{{ p.organization }}" placeholder="Organization or school" class="{{ input_cls() }}">
+  </div>
+  <textarea name="bio" rows="4" placeholder="A short bio" class="{{ input_cls() }}">{{ p.bio }}</textarea>
+  {% if mentor %}
+    <label class="text-sm block mt-3">How many mentees can you take on?
+      <input type="number" name="capacity" min="1" max="5" value="{{ p.capacity }}" class="border rounded px-2 py-1 w-20 ml-2"></label>
+  {% endif %}
+  {% endcall %}
+  {% call card("Matching preferences") %}
+  <p class="text-sm text-slate-500 mb-4">These drive the matching engine — pick everything that applies.</p>
+  {{ tag_picker("career_interests", "Career interests" if not mentor else "Fields you work in", taxonomy.career_interests, p.career_interests) }}
+  {{ tag_picker("goals", "Your goals" if not mentor else "Goals you can help with", taxonomy.goals, p.goals) }}
+  {{ tag_picker("development_areas", "Areas you want to develop" if not mentor else "Areas you can coach", taxonomy.development_areas, p.development_areas) }}
+  {% endcall %}
+  {{ btn("Save and continue") }}
+</form>
+{% endblock %}

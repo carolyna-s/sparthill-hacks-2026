@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, tags, status_badge, input_cls %}
+{% block content %}
+{% set p = a.user.profile %}
+<h1 class="text-2xl font-semibold mb-1">{{ a.user.name }} {{ status_badge(a.status) }}</h1>
+<p class="text-sm text-slate-500 mb-5">{{ a.user.role }} · {{ a.user.email }} · {{ p.headline }} {{ ('· ' ~ p.organization) if p.organization }}</p>
+<div class="grid md:grid-cols-3 gap-5">
+  <div class="md:col-span-2">
+    {% call card("Application") %}
+      {% for key, label in questions %}
+        <p class="text-sm font-medium">{{ label }}</p>
+        <p class="text-sm text-slate-700 mb-3 whitespace-pre-line">{{ a.answers.get(key) or '—' }}</p>
+      {% endfor %}
+    {% endcall %}
+    {% call card("Profile") %}
+      <p class="text-sm mb-3">{{ p.bio or 'No bio.' }}</p>
+      <p class="text-xs text-slate-500">Career interests</p><div class="mb-2">{{ tags(p.career_interests) }}</div>
+      <p class="text-xs text-slate-500">Goals</p><div class="mb-2">{{ tags(p.goals) }}</div>
+      <p class="text-xs text-slate-500">Development areas</p><div>{{ tags(p.development_areas) }}</div>
+      {% if a.user.role == 'mentor' %}<p class="text-sm mt-2">Capacity: {{ p.capacity }}</p>{% endif %}
+    {% endcall %}
+  </div>
+  <div>
+    {% call card("Decision") %}
+    <form method="post" class="space-y-3">
+      {{ csrf() }}
+      <textarea name="staff_notes" rows="4" placeholder="Internal notes" class="{{ input_cls() }}">{{ a.staff_notes }}</textarea>
+      <div class="flex flex-wrap gap-2">
+        {{ btn("Accept", "primary", "decision", "accepted") }}
+        {{ btn("Waitlist", "secondary", "decision", "waitlisted") }}
+        {{ btn("Reject", "danger", "decision", "rejected") }}
+      </div>
+    </form>
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}

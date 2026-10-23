@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, tags %}
+{% macro why(breakdown) %}
+  {% for dim, d in breakdown.items() %}
+    <div class="text-xs text-slate-500">{{ dim.replace('_', ' ') }}: {{ (d.coverage * 100)|round|int }}%
+      {% if d.shared %}<span class="text-slate-700">({{ d.shared|join(', ') }})</span>{% endif %}</div>
+  {% endfor %}
+{% endmacro %}
+{% block content %}
+<div class="flex justify-between items-center mb-5">
+  <h1 class="text-2xl font-semibold">Matching</h1>
+  <form method="post" action="{{ url_for('staff.propose_all') }}">{{ csrf() }}{{ btn("Auto-propose for all unmatched") }}</form>
+</div>
+
+{% call card("Proposed — awaiting approval (" ~ proposed|length ~ ")") %}
+<table class="w-full text-sm">
+  {% for m in proposed %}
+  <tr class="border-t align-top">
+    <td class="py-2 font-medium">{{ m.mentee.name }} → {{ m.mentor.name }}</td>
+    <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
+    <td class="py-2">{{ why(m.score_breakdown) }}</td>
+    <td class="py-2 text-right whitespace-nowrap">
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='approve') }}" class="inline">{{ csrf() }}{{ btn("Approve") }}</form>
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="inline">{{ csrf() }}{{ btn("Reject", "secondary") }}</form>
+    </td>
+  </tr>
+  {% else %}<tr><td class="text-slate-500">Nothing proposed.</td></tr>{% endfor %}
+</table>
+{% endcall %}
+
+{% call card("Unmatched accepted mentees (" ~ unmatched|length ~ ")") %}
+{% for u in unmatched %}
+  <div class="border-t py-3">
+    <p class="font-medium text-sm mb-1">{{ u.name }}</p>
+    <div class="mb-2">{{ tags(u.profile.career_interests + u.profile.goals + u.profile.development_areas) }}</div>
+    <table class="w-full text-sm">
+      {% for c in rankings[u.id] %}
+      <tr class="align-top">
+        <td class="py-1 w-48">{{ mentors[c.mentor_id].name }} <span class="text-xs text-slate-500">({{ slots[c.mentor_id] }} open)</span></td>
+        <td class="py-1 w-16 font-semibold">{{ c.score }}</td>
+        <td class="py-1">{{ why(c.breakdown) }}</td>
+        <td class="py-1 text-right">
+          <form method="post" action="{{ url_for('staff.propose_one') }}">{{ csrf() }}
+            <input type="hidden" name="mentee_id" value="{{ u.id }}"><input type="hidden" name="mentor_id" value="{{ c.mentor_id }}">
+            {{ btn("Propose", "secondary") }}</form>
+        </td>
+      </tr>
+      {% else %}<tr><td class="text-slate-500">No mentors with open capacity.</td></tr>{% endfor %}
+    </table>
+  </div>
+{% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}
+{% endcall %}
+
+{% call card("Active matches (" ~ approved|length ~ ")") %}
+<table class="w-full text-sm">
+  {% for m in approved %}
+  <tr class="border-t">
+    <td class="py-2">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</td><td>{{ m.score }}</td>
+    <td class="text-right"><a class="text-indigo-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='end') }}" class="inline">{{ csrf() }}{{ btn("End", "secondary") }}</form></td>
+  </tr>
+  {% else %}<tr><td class="text-slate-500">None yet.</td></tr>{% endfor %}
+</table>
+{% endcall %}
+{% endblock %}

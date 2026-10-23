@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{% from "staff/_summary.html" import summary, avg %}
+{% block content %}
+<div class="flex justify-between items-center mb-5">
+  <h1 class="text-2xl font-semibold">Participation &amp; satisfaction</h1>
+  <a href="{{ url_for('staff.new_event') }}" class="text-sm bg-indigo-600 text-white rounded px-3 py-1.5">New event</a>
+</div>
+{{ summary(report) }}
+{% call card("By event") %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr><th class="py-1">Event</th><th>Date</th><th>Attended</th><th>Prework</th><th>Postwork</th><th>Avg rating</th></tr></thead>
+  {% for row in report.events %}
+  <tr class="border-t">
+    <td class="py-2"><a class="text-indigo-600" href="{{ url_for('program.event', event_id=row.event.id) }}">{{ row.event.title }}</a></td>
+    <td>{{ row.event.starts_at.strftime('%b %d') }}</td>
+    <td>{{ row.attended }}/{{ report.participants }}</td>
+    <td>{{ row.prework if row.event.prework_prompt else '—' }}</td>
+    <td>{{ row.postwork if row.event.postwork_prompt else '—' }}</td>
+    <td>{{ avg(row.rating) }}</td>
+  </tr>
+  {% else %}<tr><td class="py-2 text-slate-500">No events yet.</td></tr>{% endfor %}
+</table>
+{% endcall %}
+{% endblock %}

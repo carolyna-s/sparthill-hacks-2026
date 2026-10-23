@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Mentorship Platform{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <nav class="border-b bg-white">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6 text-sm">
+      <a href="/" class="font-semibold">Mentorship</a>
+      {% if current_user.is_authenticated %}
+        {% if current_user.is_staff %}
+          <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-slate-900">Overview</a>
+          <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-slate-900">Applicants</a>
+          <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-slate-900">Matching</a>
+          <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-slate-900">Reports</a>
+        {% else %}
+          <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-slate-900">Dashboard</a>
+          <a href="{{ url_for('intake.profile') }}" class="text-slate-600 hover:text-slate-900">Profile</a>
+          <a href="{{ url_for('program.matches') }}" class="text-slate-600 hover:text-slate-900">Messages</a>
+        {% endif %}
+        <a href="{{ url_for('program.events') }}" class="text-slate-600 hover:text-slate-900">Events</a>
+        <form method="post" action="{{ url_for('auth.logout') }}" class="ml-auto flex items-center gap-3">
+          <span class="text-slate-500">{{ current_user.name }} · {{ current_user.role }}</span>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="text-slate-600 hover:text-slate-900">Log out</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}" class="ml-auto text-slate-600 hover:text-slate-900">Log in</a>
+      {% endif %}
+    </div>
+  </nav>
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="mb-4 rounded px-4 py-2 text-sm {{ 'bg-red-50 text-red-800' if cat == 'error' else 'bg-emerald-50 text-emerald-800' }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

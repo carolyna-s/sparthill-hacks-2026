@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, input_cls %}
+{% block content %}
+<div class="max-w-md mx-auto">
+  {% call card("Create your account") %}
+  <form method="post" class="space-y-3">
+    {{ csrf() }}
+    <div class="flex gap-4 text-sm">
+      <label><input type="radio" name="role" value="mentee" {{ 'checked' if role != 'mentor' }}> Mentee</label>
+      <label><input type="radio" name="role" value="mentor" {{ 'checked' if role == 'mentor' }}> Mentor</label>
+    </div>
+    <input name="name" placeholder="Full name" required class="{{ input_cls() }}">
+    <input name="email" type="email" placeholder="Email" required class="{{ input_cls() }}">
+    <input name="password" type="password" placeholder="Password (8+ characters)" minlength="8" required class="{{ input_cls() }}">
+    {{ btn("Create account") }}
+  </form>
+  <p class="text-sm text-slate-500 mt-3">Already have an account? <a class="text-indigo-600" href="{{ url_for('auth.login') }}">Log in</a></p>
+  {% endcall %}
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, tags %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-3">Applicants</h1>
+<div class="flex gap-2 text-sm mb-5">
+  {% for s in ['submitted', 'accepted', 'waitlisted', 'rejected'] %}
+    <a href="{{ url_for('staff.applications', status=s, role=role) }}" class="px-3 py-1 rounded {{ 'bg-indigo-600 text-white' if s == status else 'border bg-white' }}">{{ s }}</a>
+  {% endfor %}
+  <span class="mx-2 text-slate-300">|</span>
+  {% for r in [None, 'mentee', 'mentor'] %}
+    <a href="{{ url_for('staff.applications', status=status, role=r) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ r or 'all' }}</a>
+  {% endfor %}
+</div>
+{% call card() %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Role</th><th>Interests</th><th>Submitted</th></tr></thead>
+  {% for a in rows %}
+  <tr class="border-t">
+    <td class="py-2"><a class="text-indigo-600" href="{{ url_for('staff.application', app_id=a.id) }}">{{ a.user.name }}</a></td>
+    <td>{{ a.user.role }}</td>
+    <td>{{ tags(a.user.profile.career_interests) }}</td>
+    <td>{{ a.submitted_at.strftime('%b %d') if a.submitted_at else '—' }}</td>
+  </tr>
+  {% else %}<tr><td class="py-2 text-slate-500">None.</td></tr>{% endfor %}
+</table>
+{% endcall %}
+{% endblock %}

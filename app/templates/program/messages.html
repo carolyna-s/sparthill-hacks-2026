@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, input_cls %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</h1>
+<div class="grid md:grid-cols-3 gap-5">
+<div class="md:col-span-2">
+{% call card() %}
+<div class="space-y-3 mb-4 max-h-[60vh] overflow-y-auto">
+  {% for msg in thread %}
+    {% set mine = msg.sender_id == current_user.id %}
+    <div class="flex {{ 'justify-end' if mine }}">
+      <div class="max-w-[75%] rounded-lg px-3 py-2 text-sm {{ 'bg-indigo-600 text-white' if mine else 'bg-slate-100' }}">
+        <div class="whitespace-pre-line">{{ msg.body }}</div>
+        <div class="text-[11px] opacity-70 mt-1">{{ msg.sender.name }} · {{ msg.sent_at.strftime('%b %d %H:%M') }}</div>
+      </div>
+    </div>
+  {% else %}<p class="text-sm text-slate-500">No messages yet. Say hello!</p>{% endfor %}
+</div>
+{% if m.includes(current_user) %}
+<form method="post" class="flex gap-2">
+  {{ csrf() }}
+  <textarea name="body" rows="2" required class="{{ input_cls() }}" placeholder="Write a message"></textarea>
+  {{ btn("Send") }}
+</form>
+{% endif %}
+{% endcall %}
+</div>
+{% if m.includes(current_user) %}
+<div>
+{% call card("Rate this match") %}
+<form method="post" action="{{ url_for('program.feedback') }}" class="space-y-2">
+  {{ csrf() }}<input type="hidden" name="match_id" value="{{ m.id }}">
+  <div class="flex gap-3 text-sm">{% for r in range(1, 6) %}<label><input type="radio" name="rating" value="{{ r }}" required> {{ r }}</label>{% endfor %}</div>
+  <textarea name="comment" rows="2" placeholder="Optional comment" class="{{ input_cls() }}"></textarea>
+  {{ btn("Send", "secondary") }}
+</form>
+{% endcall %}
+</div>
+{% endif %}
+</div>
+{% endblock %}

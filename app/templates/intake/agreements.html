@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, input_cls %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">Agreements</h1>
+{% for a in agreements %}
+  {% call card(a.title ~ " (v" ~ a.version ~ ")") %}
+  <div class="text-sm whitespace-pre-line bg-slate-50 rounded p-3 mb-3">{{ a.body }}</div>
+  {% if a.id in signed %}
+    <p class="text-sm text-emerald-700">Signed by “{{ signed[a.id].typed_name }}” on {{ signed[a.id].signed_at.strftime('%b %d, %Y %H:%M UTC') }}</p>
+  {% else %}
+    <form method="post" action="{{ url_for('intake.sign', agreement_id=a.id) }}" class="flex gap-2 items-center">
+      {{ csrf() }}
+      <input name="typed_name" placeholder="Type your full name to sign" required class="{{ input_cls() }} max-w-xs">
+      {{ btn("Sign") }}
+    </form>
+  {% endif %}
+  {% endcall %}
+{% else %}<p class="text-sm text-slate-500">No agreements to sign.</p>{% endfor %}
+{% endblock %}

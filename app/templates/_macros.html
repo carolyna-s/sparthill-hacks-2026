@@ -1,0 +1,39 @@
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{% macro card(title=None) %}
+<section class="bg-white border rounded-lg p-5 mb-5">
+  {% if title %}<h2 class="font-semibold mb-3">{{ title }}</h2>{% endif %}
+  {{ caller() }}
+</section>
+{% endmacro %}
+
+{% macro tag_picker(name, label, options, selected) %}
+<fieldset class="mb-4">
+  <legend class="text-sm font-medium mb-2">{{ label }}</legend>
+  <div class="flex flex-wrap gap-2">
+    {% for opt in options %}
+      <label class="text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
+        <input type="checkbox" name="{{ name }}" value="{{ opt }}" class="hidden" {{ 'checked' if opt in selected }}>{{ opt }}
+      </label>
+    {% endfor %}
+  </div>
+</fieldset>
+{% endmacro %}
+
+{% macro tags(items) %}
+{% for t in items %}<span class="inline-block text-xs bg-slate-100 rounded-full px-2 py-0.5 mr-1 mb-1">{{ t }}</span>{% endfor %}
+{% endmacro %}
+
+{% macro btn(label, kind='primary', name=None, value=None) %}
+<button {% if name %}name="{{ name }}" value="{{ value }}"{% endif %}
+  class="text-sm rounded px-3 py-1.5 {{ 'bg-indigo-600 text-white hover:bg-indigo-700' if kind == 'primary' else 'border hover:bg-slate-50' if kind == 'secondary' else 'bg-red-600 text-white hover:bg-red-700' }}">{{ label }}</button>
+{% endmacro %}
+
+{% macro status_badge(status) %}
+{% set colors = {'draft': 'bg-slate-100', 'submitted': 'bg-amber-100 text-amber-800', 'accepted': 'bg-emerald-100 text-emerald-800',
+                 'waitlisted': 'bg-sky-100 text-sky-800', 'rejected': 'bg-red-100 text-red-800', 'proposed': 'bg-amber-100 text-amber-800',
+                 'approved': 'bg-emerald-100 text-emerald-800', 'ended': 'bg-slate-100'} %}
+<span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro input_cls() %}w-full border rounded px-3 py-2 text-sm{% endmacro %}
