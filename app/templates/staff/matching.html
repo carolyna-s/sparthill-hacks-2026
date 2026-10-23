@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, tags %}
 {% macro why(breakdown) %}
-  {% for dim, d in breakdown.items() %}
+  {% for dim, shared in (breakdown.get('filters') or {}).items() if shared %}
+    <div class="text-xs text-slate-500">{{ dim }}: <span class="text-slate-700">{{ shared|join(', ') }}</span></div>
+  {% endfor %}
+  {% for dim, d in breakdown.items() if dim != 'filters' %}
     <div class="text-xs text-slate-500">{{ dim.replace('_', ' ') }}: {{ (d.coverage * 100)|round|int }}%
       {% if d.shared %}<span class="text-slate-700">({{ d.shared|join(', ') }})</span>{% endif %}</div>
   {% endfor %}

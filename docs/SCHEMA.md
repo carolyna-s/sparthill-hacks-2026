@@ -1,7 +1,7 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `31ed905ca990`,
-applied to Supabase `sparthill-hackathon` on Oct 23, 2026). Table names are the snake_cased
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `97249da0ff3f`;
+Supabase `sparthill-hackathon` is at `31ed905ca990` as of Oct 23, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
 On Postgres, the `vector(384)` columns use pgvector (in the `extensions` schema) with HNSW
@@ -25,7 +25,11 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `major`, `concentration` | single values |
 | `pathways`, `career_interests`, `goals`, `development_areas` | lists |
 | `years_experience` | integer |
-| `languages`, `language_required` | list + "must share a language" flag |
+| `languages`, `language_required` | list + "must share a language" flag. Matching treats a shared language as a hard filter; blank means English |
+| `availability` | hard filter: `"Monday - morning"` … `"Sunday - afternoon"`; a pair must share one slot |
+| `career_outlook`, `mentoring_style`, `company_types`, `education_paths` | soft-filter lists; scores 1 if the mentor has any of the mentee's picks |
+| `seniority` | mentee: acceptable mentor levels; mentor: own level (one value) |
+| `school`, `prefers_alumni` | mentee's school / mentor's alma mater; same-school bonus only when the mentee opts in |
 | `organizations` | mentee: target orgs; mentor: current/past employers |
 | `clubs_prior`, `clubs_current` | lists |
 | `student_groups`, `groups_opt_in` | sensitive; only used for matching if opted in; never shown to the other party |

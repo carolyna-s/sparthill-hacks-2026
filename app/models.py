@@ -95,6 +95,16 @@ class Profile(db.Model):
     clubs_current = _tags()
     student_groups = _tags()  # sensitive: never shown to the other party
     groups_opt_in = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
+    # Sign-up matching form (app/taxonomy.py). Hard filters: availability, languages.
+    availability = _tags()  # "Monday - morning", ...
+    # Soft filters, alongside career_interests / goals / development_areas above.
+    career_outlook = _tags()
+    seniority = _tags()  # mentee: preferred mentor seniority; mentor: own (one value)
+    mentoring_style = _tags()
+    company_types = _tags()  # mentee: interested in; mentor: has worked at
+    education_paths = _tags()
+    school = db.Column(db.String(200))  # mentee: current school; mentor: alma mater
+    prefers_alumni = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     linkedin_url = db.Column(db.String(300))
     resume_key = db.Column(db.String(500))  # storage key of the uploaded resume / LinkedIn PDF
     resume_file_name = db.Column(db.String(255))

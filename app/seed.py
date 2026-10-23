@@ -33,6 +33,51 @@ MENTEES = [
 ]
 
 
+# Sign-up form answers (hard + soft filters), by name. Jordan only shares a time slot with
+# Priya and Elena, so the hard filter is visible on the staff matching page.
+MATCHING = {
+    "Priya Raman": dict(availability=["Monday - afternoon", "Wednesday - afternoon"], languages=["English", "Hindi"],
+                        career_outlook=["individual contributor / specialist", "people manager"],
+                        seniority=["senior (7-15 years)"], mentoring_style=["hands-on guidance", "accountability and goal tracking"],
+                        company_types=["large corporation", "startup"], education_paths=["4-year university", "graduate degree"],
+                        school="State University"),
+    "Marcus Lee": dict(availability=["Tuesday - morning", "Thursday - morning", "Saturday - morning"],
+                       languages=["English", "Mandarin"], career_outlook=["people manager", "founder / entrepreneur"],
+                       seniority=["mid-level (3-7 years)"], mentoring_style=["coaching through questions", "networking and introductions"],
+                       company_types=["startup", "mid-size company"], education_paths=["4-year university"],
+                       school="Tech Institute"),
+    "Elena Ortiz": dict(availability=["Monday - morning", "Wednesday - morning", "Friday - afternoon"],
+                        languages=["English", "Spanish"], career_outlook=["academia / research", "individual contributor / specialist"],
+                        seniority=["senior (7-15 years)"], mentoring_style=["coaching through questions", "sounding board"],
+                        company_types=["large corporation", "academia"],
+                        education_paths=["graduate degree", "first-generation college student"], school="State University"),
+    "Sam Okafor": dict(availability=["Saturday - morning", "Sunday - afternoon", "Tuesday - afternoon"],
+                       languages=["English", "Spanish"], career_outlook=["public service", "executive leadership"],
+                       seniority=["executive (15+ years)"], mentoring_style=["sounding board", "networking and introductions"],
+                       company_types=["nonprofit", "government / public sector"],
+                       education_paths=["community college transfer", "first-generation college student"], school="City College"),
+    "Jordan Kim": dict(availability=["Monday - afternoon", "Friday - afternoon"], languages=["English", "Korean"],
+                       career_outlook=["individual contributor / specialist"], seniority=["senior (7-15 years)"],
+                       mentoring_style=["hands-on guidance"], company_types=["large corporation"],
+                       education_paths=["4-year university"], school="State University", prefers_alumni=True),
+    "Avery Patel": dict(availability=["Tuesday - morning", "Thursday - morning"], languages=["English"],
+                        career_outlook=["people manager"], seniority=["mid-level (3-7 years)", "senior (7-15 years)"],
+                        mentoring_style=["coaching through questions"], company_types=["startup"],
+                        education_paths=["4-year university"], school="State University"),
+    "Riley Chen": dict(availability=["Saturday - morning", "Tuesday - afternoon"], languages=["English", "Cantonese"],
+                       career_outlook=["public service"], mentoring_style=["sounding board"],
+                       company_types=["nonprofit", "government / public sector"],
+                       education_paths=["community college transfer"], school="State University"),
+    "Taylor Brooks": dict(availability=["Wednesday - morning", "Friday - afternoon"], languages=["English", "Spanish"],
+                          career_outlook=["academia / research"], seniority=["senior (7-15 years)"],
+                          mentoring_style=["coaching through questions"], company_types=["academia"],
+                          education_paths=["first-generation college student"], school="State University",
+                          prefers_alumni=True),
+    "Morgan Diaz": dict(availability=["Monday - afternoon", "Saturday - morning"], languages=["English", "Spanish"],
+                        career_outlook=["founder / entrepreneur"], mentoring_style=["accountability and goal tracking"],
+                        company_types=["startup"], education_paths=["4-year university"], school="State University"),
+}
+
 DEFAULT_WEIGHTS = {"pathways": 0.15, "interests": 0.15, "major": 0.10, "years_experience": 0.10,
                    "languages": 0.10, "clubs": 0.10, "student_groups": 0.10, "goals": 0.10,
                    "organizations": 0.05, "concentration": 0.05}
@@ -89,7 +134,7 @@ def seed() -> None:
     for name, headline, interests, goals, areas, cap in MENTORS:
         u = _user(name, "mentor")
         u.profile = Profile(headline=headline, career_interests=interests, goals=goals,
-                            development_areas=areas, capacity=cap)
+                            development_areas=areas, capacity=cap, **MATCHING[name])
         u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
                                     answers={"experience": "10+ years", "why": "Give back", "commitment": "4"})
         db.session.flush()
@@ -97,7 +142,7 @@ def seed() -> None:
 
     for i, (name, interests, goals, areas) in enumerate(MENTEES):
         u = _user(name, "mentee")
-        u.profile = Profile(career_interests=interests, goals=goals, development_areas=areas)
+        u.profile = Profile(career_interests=interests, goals=goals, development_areas=areas, **MATCHING[name])
         # Leave the last mentee pending so the review queue has something in it.
         status = "submitted" if i == len(MENTEES) - 1 else "accepted"
         u.application = Application(cohort_id=cohort.id, status=status, submitted_at=utcnow(),

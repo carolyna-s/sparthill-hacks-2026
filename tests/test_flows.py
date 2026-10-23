@@ -27,8 +27,37 @@ def test_mentee_intake_flow(client):
     agreement_id = 1
     client.post(f"/agreements/{agreement_id}/sign", data={"typed_name": "New Person"})
     client.post("/apply", data={**answers, "action": "submit"})
+    assert user.application.status == "draft"  # no availability or language yet
+
+    resp = client.post("/profile", data={"availability": ["Monday - morning", "Funday - noon"],
+                                         "languages": ["Spanish"], "seniority": ["senior (7-15 years)",
+                                                                                 "executive (15+ years)"],
+                                         "school": "State University", "prefers_alumni": "1"})
+    assert resp.headers["Location"].endswith("/apply")
+    assert user.profile.availability == ["Monday - morning"]
+    assert user.profile.seniority == ["senior (7-15 years)", "executive (15+ years)"]
+    assert user.profile.prefers_alumni
+
+    client.post("/apply", data={**answers, "action": "submit"})
     db.session.refresh(user.application)
     assert user.application.status == "submitted"
+
+
+def test_profile_requires_hard_filters_and_mentor_has_one_seniority(client):
+    client.post("/register", data={"role": "mentor", "name": "New Mentor", "email": "nm@x.org",
+                                   "password": "longenough"})
+    resp = client.post("/profile", data={})
+    assert resp.headers["Location"].endswith("/profile")  # availability missing: stay on the form
+
+    resp = client.post("/profile", data={"availability": ["Friday - afternoon"]})
+    assert resp.headers["Location"].endswith("/apply")  # language is optional
+    user = db.session.query(User).filter_by(email="nm@x.org").one()
+    assert user.profile.languages == ["English"]
+
+    client.post("/profile", data={"availability": ["Friday - afternoon"], "languages": ["English"],
+                                  "seniority": ["senior (7-15 years)", "executive (15+ years)"]})
+    user = db.session.query(User).filter_by(email="nm@x.org").one()
+    assert user.profile.seniority == ["senior (7-15 years)"]
 
 
 def test_staff_pages_are_staff_only(client):

@@ -6,10 +6,11 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from flask_login import current_user
 
 from .auth import role_required
+from .matching import HARD_FILTER_DEFAULTS
 from .extensions import db
-from .models import Agreement, AgreementSignature, Application, Cohort, utcnow
+from .models import Agreement, AgreementSignature, Application, Cohort, Profile, utcnow
 from .program import unsigned_agreements
-from .taxonomy import TAXONOMY
+from .taxonomy import DAYS, PERIODS, TAXONOMY
 
 bp = Blueprint("intake", __name__)
 
@@ -29,6 +30,15 @@ QUESTIONS = {
 }
 
 
+# Hard filters: matching can't place someone without these, so they're required. Languages is
+# a hard filter too, but optional: blank means English (matching.HARD_FILTER_DEFAULTS).
+REQUIRED = {"availability": "at least one time you're available"}
+
+
+def missing_profile_fields(p: Profile) -> list[str]:
+    return [label for dim, label in REQUIRED.items() if not getattr(p, dim)]
+
+
 @bp.route("/profile", methods=["GET", "POST"])
 @role_required("mentee", "mentor")
 def profile():
@@ -37,14 +47,23 @@ def profile():
         p.headline = request.form.get("headline", "").strip()
         p.bio = request.form.get("bio", "").strip()
         p.organization = request.form.get("organization", "").strip()
+        p.school = request.form.get("school", "").strip()
         for dim, allowed in TAXONOMY.items():
             setattr(p, dim, [t for t in request.form.getlist(dim) if t in allowed])
+        p.languages = p.languages or HARD_FILTER_DEFAULTS["languages"]
         if current_user.role == "mentor":
             p.capacity = max(1, min(5, int(request.form.get("capacity") or 1)))
+            p.seniority = p.seniority[:1]  # a mentor has one seniority level
+        else:
+            p.prefers_alumni = bool(request.form.get("prefers_alumni"))
         db.session.commit()
+        missing = missing_profile_fields(p)
+        if missing:
+            flash("Saved, but matching needs " + " and ".join(missing) + ".", "error")
+            return redirect(url_for("intake.profile"))
         flash("Profile saved.", "ok")
         return redirect(url_for("intake.apply"))
-    return render_template("intake/profile.html", p=p)
+    return render_template("intake/profile.html", p=p, days=DAYS, periods=PERIODS)
 
 
 @bp.route("/apply", methods=["GET", "POST"])
@@ -64,6 +83,9 @@ def apply():
         if request.form.get("action") == "submit":
             if not all(app_row.answers.values()):
                 flash("Answer every question before submitting.", "error")
+            elif missing_profile_fields(current_user.profile):
+                flash("Finish your profile before submitting: add "
+                      + " and ".join(missing_profile_fields(current_user.profile)) + ".", "error")
             elif unsigned_agreements(current_user):
                 flash("Sign the program agreements before submitting.", "error")
             else:

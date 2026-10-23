@@ -1,13 +1,22 @@
 """Score-based mentor ranking.
 
-A mentor's score for a mentee is how much of what the mentee asked for the mentor covers,
-per dimension, weighted:
+Hard filters drop a pair outright: they must share at least one availability slot and one
+language. Blank languages count as English. A side with no availability yet (older profiles)
+isn't filtered on it.
 
-    score = 100 * sum(weight[d] * |mentee[d] & mentor[d]| / |mentee[d]|)
+Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
-Coverage (not Jaccard) is used on purpose: a mentor with many tags shouldn't be penalized
-for breadth. A dimension the mentee left empty counts as fully covered, so it doesn't drag
-every score down. Mentors at capacity are excluded.
+    score = 100 * sum(weight[d] * sim[d]) / sum(weight)
+
+- coverage dimensions (industry, skills, goals): share of what the mentee asked for that the
+  mentor covers. Coverage (not Jaccard) is used on purpose: a mentor with many tags shouldn't
+  be penalized for breadth.
+- preference dimensions (career outlook, seniority, style, company type, education path):
+  1 if the mentor has any of the values the mentee picked, else 0.
+- alumni: 1 if the mentee asked for a same-school mentor and the schools match.
+
+A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
+it doesn't drag every score down. Mentors at capacity are excluded.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -22,7 +31,16 @@ from sqlalchemy import func
 from .extensions import db
 from .models import Application, Match, Profile, User
 
-WEIGHTS = {"career_interests": 0.4, "goals": 0.3, "development_areas": 0.3}
+HARD_FILTERS = ("availability", "languages")
+HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
+COVERAGE = ("career_interests", "development_areas", "goals")
+PREFERENCE = ("career_outlook", "seniority", "mentoring_style", "company_types", "education_paths")
+
+WEIGHTS = {"career_interests": 0.20, "development_areas": 0.15, "goals": 0.15, "career_outlook": 0.10,
+           "seniority": 0.10, "mentoring_style": 0.10, "company_types": 0.08, "education_paths": 0.07,
+           "alumni": 0.05}
+
+FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("school", "prefers_alumni")
 
 
 @dataclass
@@ -32,16 +50,43 @@ class Candidate:
     breakdown: dict = field(default_factory=dict)
 
 
+def hard_filter_overlap(mentee: dict, mentor: dict) -> dict[str, list] | None:
+    """Shared values per hard filter, or None if the pair fails one."""
+    overlap = {}
+    for dim in HARD_FILTERS:
+        default = HARD_FILTER_DEFAULTS.get(dim, [])
+        a, b = set(mentee.get(dim) or default), set(mentor.get(dim) or default)
+        shared = a & b
+        if a and b and not shared:
+            return None
+        overlap[dim] = sorted(shared)
+    return overlap
+
+
+def _same_school(mentee: dict, mentor: dict) -> bool:
+    a, b = (mentee.get("school") or "").strip().lower(), (mentor.get("school") or "").strip().lower()
+    return bool(a) and a == b
+
+
 def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[float, dict]:
     total, breakdown = 0.0, {}
     for dim, w in weights.items():
-        wanted = set(mentee.get(dim) or [])
-        offered = set(mentor.get(dim) or [])
-        shared = wanted & offered
-        coverage = len(shared) / len(wanted) if wanted else 1.0
-        total += w * coverage
-        breakdown[dim] = {"coverage": round(coverage, 3), "shared": sorted(shared), "weight": w}
-    return round(100 * total, 1), breakdown
+        if dim == "alumni":
+            wanted = mentee.get("prefers_alumni")
+            shared = [mentor["school"]] if wanted and _same_school(mentee, mentor) else []
+            sim = (1.0 if shared else 0.0) if wanted else 1.0
+        else:
+            wanted = set(mentee.get(dim) or [])
+            shared = sorted(wanted & set(mentor.get(dim) or []))
+            if not wanted:
+                sim = 1.0
+            elif dim in PREFERENCE:
+                sim = 1.0 if shared else 0.0
+            else:
+                sim = len(shared) / len(wanted)
+        total += w * sim
+        breakdown[dim] = {"coverage": round(sim, 3), "shared": shared, "weight": w}
+    return round(100 * total / sum(weights.values()), 1), breakdown
 
 
 def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, int],
@@ -51,7 +96,11 @@ def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, i
     for mentor_id, tags in mentors.items():
         if open_slots.get(mentor_id, 0) <= 0:
             continue
+        overlap = hard_filter_overlap(mentee, tags)
+        if overlap is None:
+            continue
         score, breakdown = score_pair(mentee, tags)
+        breakdown["filters"] = overlap
         ranked.append(Candidate(mentor_id, score, breakdown))
     ranked.sort(key=lambda c: (-c.score, c.mentor_id))
     return ranked[:limit] if limit else ranked
@@ -83,7 +132,7 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
 # --- DB adapters -------------------------------------------------------------
 
 def _tags(p: Profile) -> dict:
-    return {dim: getattr(p, dim) for dim in WEIGHTS}
+    return {f: getattr(p, f) for f in FIELDS}
 
 
 def accepted_profiles(role: str) -> dict[int, dict]:

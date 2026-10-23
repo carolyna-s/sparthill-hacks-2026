@@ -8,7 +8,7 @@
   {% call card("About you") %}
   <div class="grid md:grid-cols-2 gap-3 mb-3">
     <input name="headline" value="{{ p.headline }}" placeholder="{{ 'Current role' if mentor else 'Student / current role' }}" class="{{ input_cls() }}">
-    <input name="organization" value="{{ p.organization }}" placeholder="Organization or school" class="{{ input_cls() }}">
+    <input name="organization" value="{{ p.organization }}" placeholder="{{ 'Company or organization' if mentor else 'Organization or school' }}" class="{{ input_cls() }}">
   </div>
   <textarea name="bio" rows="4" placeholder="A short bio" class="{{ input_cls() }}">{{ p.bio }}</textarea>
   {% if mentor %}
@@ -16,11 +16,50 @@
       <input type="number" name="capacity" min="1" max="5" value="{{ p.capacity }}" class="border rounded px-2 py-1 w-20 ml-2"></label>
   {% endif %}
   {% endcall %}
-  {% call card("Matching preferences") %}
-  <p class="text-sm text-slate-500 mb-4">These drive the matching engine — pick everything that applies.</p>
-  {{ tag_picker("career_interests", "Career interests" if not mentor else "Fields you work in", taxonomy.career_interests, p.career_interests) }}
+
+  {% call card("When and how you can meet") %}
+  <p class="text-sm text-slate-500 mb-4">You'll only be matched with someone who shares at least one time slot and one language.</p>
+  <fieldset class="mb-4">
+    <legend class="text-sm font-medium mb-2">Availability <span class="font-normal text-slate-500">· required</span></legend>
+    <div class="grid grid-cols-[auto_1fr_1fr] gap-2 max-w-sm text-sm items-center">
+      <span></span>
+      {% for period in periods %}<span class="text-xs text-slate-500 text-center">{{ period }}</span>{% endfor %}
+      {% for day in days %}
+        <span class="pr-2">{{ day }}</span>
+        {% for period in periods %}
+          {% set slot = day ~ ' - ' ~ period %}
+          <label class="border rounded py-1 text-center cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
+            <input type="checkbox" name="availability" value="{{ slot }}" class="hidden" aria-label="{{ slot }}" {{ 'checked' if slot in p.availability }}>✓
+          </label>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </fieldset>
+  {{ tag_picker("languages", "Languages you're comfortable meeting in", taxonomy.languages, p.languages, hint="optional, defaults to English") }}
+  {% endcall %}
+
+  {% call card("What you're looking for" if not mentor else "What you bring") %}
+  <p class="text-sm text-slate-500 mb-4">These shape your match score. Pick everything that applies; leave a question blank if you have no preference.</p>
+  {{ tag_picker("career_interests", "Industries / fields of interest" if not mentor else "Industries you work in", taxonomy.career_interests, p.career_interests) }}
+  {{ tag_picker("development_areas", "Skills you want to learn" if not mentor else "Skills you can teach", taxonomy.development_areas, p.development_areas) }}
   {{ tag_picker("goals", "Your goals" if not mentor else "Goals you can help with", taxonomy.goals, p.goals) }}
-  {{ tag_picker("development_areas", "Areas you want to develop" if not mentor else "Areas you can coach", taxonomy.development_areas, p.development_areas) }}
+  {{ tag_picker("career_outlook", "Where you see your career in 3–5 years" if not mentor else "Career paths you can speak to", taxonomy.career_outlook, p.career_outlook) }}
+  {% if mentor %}
+    {{ tag_picker("seniority", "Your seniority", taxonomy.seniority, p.seniority, multiple=False) }}
+  {% else %}
+    {{ tag_picker("seniority", "Preferred mentor seniority", taxonomy.seniority, p.seniority) }}
+  {% endif %}
+  {{ tag_picker("mentoring_style", "How you'd like to be mentored" if not mentor else "Your mentoring style", taxonomy.mentoring_style, p.mentoring_style) }}
+  {{ tag_picker("company_types", "Company types you're interested in" if not mentor else "Company types you've worked at", taxonomy.company_types, p.company_types) }}
+  {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, p.education_paths) }}
+  <fieldset class="mb-2">
+    <legend class="text-sm font-medium mb-2">{{ "Your school" if not mentor else "School you graduated from" }}</legend>
+    <input name="school" value="{{ p.school or '' }}" placeholder="School name" class="{{ input_cls() }} max-w-sm">
+    {% if not mentor %}
+      <label class="text-sm block mt-2"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
+        Prefer a mentor who went to my school</label>
+    {% endif %}
+  </fieldset>
   {% endcall %}
   {{ btn("Save and continue") }}
 </form>
