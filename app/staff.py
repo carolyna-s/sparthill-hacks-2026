@@ -20,7 +20,7 @@ bp = Blueprint("staff", __name__, url_prefix="/staff")
 
 
 @bp.before_request
-@role_required("staff")
+@role_required("staff", "backend")
 def _staff_only():
     return None
 

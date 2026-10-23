@@ -10,6 +10,7 @@ flask-sqlalchemy==3.1.1
 flask-migrate==4.1.0
 sqlalchemy==2.1.6
 psycopg[binary]==3.3.6
+pgvector==0.5.1  # vector(384) columns for soft-answer embeddings
 
 # AWS: S3 uploads, SES email (only used when configured)
 boto3==1.43.118

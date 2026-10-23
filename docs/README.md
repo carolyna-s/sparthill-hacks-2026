@@ -57,6 +57,9 @@ flask seed                         # demo cohort, agreement, events, staff, ment
 
 `flask seed` does nothing if the database already has data.
 
+On Supabase the schema is already applied, so `flask db upgrade` reports nothing to do. Don't
+run `flask seed` there unless the team agrees, because it adds demo accounts to the shared database.
+
 ### 4. Start the server
 
 ```bash

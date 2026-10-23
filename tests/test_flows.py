@@ -95,3 +95,21 @@ def test_cron_endpoint_requires_secret(client):
     assert client.post("/internal/cron/reminders").status_code == 403
     res = client.post("/internal/cron/reminders", headers={"X-Cron-Secret": "test-secret"})
     assert res.status_code == 200 and res.json["sent"] > 0
+
+
+def test_backend_role_can_use_staff_pages(client):
+    login(client, "backend.admin@example.org")
+    assert client.get("/staff/matching").status_code == 200
+
+
+def test_soft_answer_embedding_roundtrip(app):
+    from app.models import Answer, Question
+
+    q = db.session.query(Question).filter_by(key="mentee_hopes").one()
+    assert q.pairs_with.audience == "mentor"
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    db.session.add(Answer(user_id=user.id, question_id=q.id, text="Guidance on robotics roles",
+                          embedding=[0.1] * 384, embedding_model="all-MiniLM-L6-v2"))
+    db.session.commit()
+    db.session.expire_all()
+    assert db.session.query(Answer).one().embedding[:2] == [0.1, 0.1]

@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from .extensions import db
-from .models import (Agreement, AgreementSignature, Application, Cohort, Event, Profile, User,
-                     utcnow)
+from .models import (Agreement, AgreementSignature, Application, Cohort, Event, MatchingConfig, Profile,
+                     Question, User, utcnow)
 
 PASSWORD = "password123"
 
@@ -33,6 +33,31 @@ MENTEES = [
 ]
 
 
+DEFAULT_WEIGHTS = {"pathways": 0.15, "interests": 0.15, "major": 0.10, "years_experience": 0.10,
+                   "languages": 0.10, "clubs": 0.10, "student_groups": 0.10, "goals": 0.10,
+                   "organizations": 0.05, "concentration": 0.05}
+DEFAULT_SETTINGS = {"alpha": 0.6, "experience_gap": [3, 10], "load_penalty": 0.1,
+                    "context_range": [0.85, 1.15], "llm_top_k": 5}
+
+# Soft (free-text) questions, as (mentee key, mentee prompt, mentor key, mentor prompt).
+SOFT_QUESTIONS = [
+    ("mentee_hopes", "What do you hope to get out of having a mentor?",
+     "mentor_offers", "What do you hope to offer a mentee?"),
+    ("mentee_path", "Where do you see yourself in 3-5 years, and what's in the way?",
+     "mentor_path", "Describe your career path, including detours."),
+    ("mentee_style", "How do you like to receive advice and feedback?",
+     "mentor_style", "Describe your mentoring or communication style."),
+]
+
+
+def _questions() -> None:
+    for i, (ek, ep, rk, rp) in enumerate(SOFT_QUESTIONS):
+        mentor_q = Question(key=rk, audience="mentor", prompt=rp, sort=i)
+        db.session.add(mentor_q)
+        db.session.flush()
+        db.session.add(Question(key=ek, audience="mentee", prompt=ep, sort=i, pairs_with_id=mentor_q.id))
+
+
 def _user(name: str, role: str) -> User:
     email = name.lower().replace(" ", ".") + "@example.org"
     u = db.session.query(User).filter_by(email=email).first()
@@ -55,6 +80,10 @@ def seed() -> None:
                                "communicate respectfully, and keep mentor-mentee conversations confidential.")
     db.session.add_all([cohort, agreement])
     _user("Staff Admin", "staff")
+    _user("Backend Admin", "backend")
+    db.session.add(MatchingConfig(is_active=True, weights=DEFAULT_WEIGHTS, settings=DEFAULT_SETTINGS,
+                                  notes="Initial weights from docs/PLAN.md"))
+    _questions()
     db.session.flush()
 
     for name, headline, interests, goals, areas, cap in MENTORS:
