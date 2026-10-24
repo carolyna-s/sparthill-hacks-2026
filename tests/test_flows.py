@@ -395,6 +395,16 @@ def test_unread_message_badge_and_live_thread_updates(client):
     assert b"data-live-messages" in thread_page.data
     assert b"data-message-updates-url" in thread_page.data
 
+    # Messages the viewer hadn't read are flagged new (shaded blue), once.
+    assert f'data-message-id="{message.id}" data-new'.encode() in thread_page.data
+    assert b"New messages" in thread_page.data
+    arrived = db.session.query(Message).filter_by(body="Arrived while open").one()
+    assert f'data-message-id="{arrived.id}" data-new' in update.json["messages_html"]
+    again = client.get(f"/messages/{match.id}/updates").json["messages_html"]
+    assert " data-new>" not in again and "New messages" not in again
+    assert client.get(f"/messages/{match.id}").data.index(b"Unread first message") < \
+        client.get(f"/messages/{match.id}").data.index(b"Arrived while open")  # oldest first
+
 
 def test_mentor_schedules_meeting_on_both_calendars(client):
     from app import matching

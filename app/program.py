@@ -233,6 +233,20 @@ def inbox():
     return render_template("program/inbox.html", threads=threads, awaiting=awaiting)
 
 
+def _mark_read(m: Match) -> set[int]:
+    """Mark the other side's unread messages as read; return their ids so the page can highlight
+    them as new. Staff viewing a thread don't mark anything read."""
+    if not m.includes(current_user):
+        return set()
+    unread = (db.session.query(Message)
+              .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
+              .all())
+    for msg in unread:
+        msg.read_at = utcnow()
+    db.session.commit()
+    return {msg.id for msg in unread}
+
+
 @bp.route("/messages/<int:match_id>", methods=["GET", "POST"])
 @login_required
 def messages(match_id: int):
@@ -249,28 +263,21 @@ def messages(match_id: int):
             db.session.commit()
             notify.email_unread_messages(m.id, current_user.id)
         return redirect(url_for("program.messages", match_id=m.id))
-    if m.includes(current_user):  # staff viewing a thread doesn't mark it read
-        (db.session.query(Message)
-         .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
-         .update({"read_at": utcnow()}))
-        db.session.commit()
-    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).all()
+    new_ids = _mark_read(m)
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at).all()
     meetings = (db.session.query(Meeting).filter(Meeting.match_id == m.id, Meeting.starts_at >= utcnow() - timedelta(hours=1))
                 .order_by(Meeting.starts_at).all())
-    return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow())
+    return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow(),
+                           new_ids=new_ids)
 
 
 @bp.get("/messages/<int:match_id>/updates")
 @login_required
 def message_updates(match_id: int):
     m = _approved_match(match_id)
-    if m.includes(current_user):
-        (db.session.query(Message)
-         .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
-         .update({"read_at": utcnow()}))
-        db.session.commit()
-    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).all()
-    html = render_template("program/_message_list.html", m=m, thread=thread)
+    new_ids = _mark_read(m)
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at).all()
+    html = render_template("program/_message_list.html", m=m, thread=thread, new_ids=new_ids)
     count = unread_message_count(current_user.id) if current_user.role in ("mentee", "mentor") else 0
     response = jsonify(messages_html=html, unread_count=count)
     response.headers["Cache-Control"] = "no-store"
