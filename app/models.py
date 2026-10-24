@@ -406,8 +406,8 @@ class MatchFeedback(db.Model):
     """
 
     REASONS = {
-        "deny": ("interests_or_pathway", "experience_gap", "language_or_communication", "fit_concern",
-                 "mentor_overloaded", "conflict_of_interest", "other"),
+        "deny": ("gut_feeling", "interests_or_pathway", "experience_gap", "language_or_communication",
+                 "fit_concern", "mentor_overloaded", "conflict_of_interest", "other"),
         "withdraw": ("no_time", "not_a_good_fit", "found_other_mentorship", "program_not_for_me", "other"),
     }
 
