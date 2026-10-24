@@ -16,35 +16,48 @@ def test_healthz(client):
 def test_mentee_intake_flow(client):
     client.post("/register", data={"role": "mentee", "name": "New Person", "email": "new@x.org",
                                    "password": "longenough", "school": "State University"})
-    client.post("/profile", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
-                                  "industry": "  software   DEVELOPMENT ", "looking_for": "Interview practice"})
     user = db.session.query(User).filter_by(email="new@x.org").one()
-    assert user.profile.school == "State University"
+    assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
+    assert client.get("/profile/3").headers["Location"].endswith("/profile")  # locked until step 2 is done
+
+    resp = client.post("/profile/1", data={"name": "New Person", "email": "new@x.org", "school": "State University",
+                                           "bio": "Hi", "linkedin_url": "https://www.linkedin.com/in/np"})
+    assert resp.headers["Location"].endswith("/profile/2")
+    assert user.profile.linkedin_url == "https://www.linkedin.com/in/np"
+
+    resp = client.post("/profile/2", data={"availability": ["Monday - night", "Funday - noon"], "languages": ["Spanish"]})
+    assert resp.headers["Location"].endswith("/profile/3")
+    assert user.profile.availability == ["Monday - night"]
+
+    resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
+                                           "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
+    assert resp.headers["Location"].endswith("/profile/4")
     assert user.profile.goals == ["switch careers"]
     assert user.profile.goals_other == "write a book"
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
-    assert user.profile.looking_for == "Interview practice"
-
-    answers = {"why": "a", "success": "b", "commitment": "4"}
-    client.post("/apply", data={**answers, "action": "submit"})
-    assert user.application.status == "draft"  # agreement not signed yet
-
-    agreement_id = 1
-    client.post(f"/agreements/{agreement_id}/sign", data={"typed_name": "New Person"})
-    client.post("/apply", data={**answers, "action": "submit"})
-    assert user.application.status == "draft"  # no availability or language yet
-
-    resp = client.post("/profile", data={"availability": ["Monday - morning", "Funday - noon"],
-                                         "languages": ["Spanish"], "industry": "Marine Robotics",
-                                         "prefers_alumni": "1"})
-    assert resp.headers["Location"].endswith("/apply")
-    assert user.profile.availability == ["Monday - morning"]
-    assert user.profile.industry == "Marine Robotics"  # not a suggestion: kept as typed
     assert user.profile.prefers_alumni
 
-    client.post("/apply", data={**answers, "action": "submit"})
+    resp = client.post("/profile/4", data={"looking_for": "Interview practice", "why": "a", "success": "b"})
+    assert resp.headers["Location"].endswith("/apply")
+    assert user.profile.looking_for == "Interview practice"
+    assert user.application.answers == {"why": "a", "success": "b", "commitment": ""}
+
+    client.post("/apply", data={"action": "submit"})
+    assert user.application.status == "draft"  # agreement not signed yet
+
+    client.post("/agreements/1/sign", data={"typed_name": "New Person"})
+    client.post("/apply", data={"action": "submit"})
     db.session.refresh(user.application)
-    assert user.application.status == "submitted"
+    assert user.application.status == "submitted"  # free-response answers are optional
+
+
+def test_profile_back_saves_without_requiring(client):
+    client.post("/register", data={"role": "mentee", "name": "Back Person", "email": "bp@x.org",
+                                   "password": "longenough", "school": "State University"})
+    resp = client.post("/profile/2", data={"nav": "back", "languages": ["Korean"]})
+    assert resp.headers["Location"].endswith("/profile/1")
+    user = db.session.query(User).filter_by(email="bp@x.org").one()
+    assert user.profile.languages == ["Korean"]
 
 
 def test_register_requires_school(client):
@@ -53,16 +66,22 @@ def test_register_requires_school(client):
     assert db.session.query(User).filter_by(email="ns@x.org").first() is None
 
 
-def test_profile_requires_availability_not_language(client):
+def test_required_fields_block_next(client):
     client.post("/register", data={"role": "mentor", "name": "New Mentor", "email": "nm@x.org",
                                    "password": "longenough", "school": "City College"})
-    resp = client.post("/profile", data={})
-    assert resp.headers["Location"].endswith("/profile")  # availability missing: stay on the form
-
-    resp = client.post("/profile", data={"availability": ["Friday - afternoon"]})
-    assert resp.headers["Location"].endswith("/apply")  # language is optional
+    resp = client.post("/profile/1", data={"name": "New Mentor", "email": "nm@x.org", "school": " "})
+    assert resp.headers["Location"].endswith("/profile/1")  # school is required
+    resp = client.post("/profile/1", data={"name": "New Mentor", "email": "jordan.kim@example.org", "school": "CC"})
+    assert resp.headers["Location"].endswith("/profile/1")  # email taken
     user = db.session.query(User).filter_by(email="nm@x.org").one()
-    assert user.profile.languages == ["English"]
+    assert user.profile.school == "CC"
+
+    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
+    assert resp.headers["Location"].endswith("/profile/2")  # language is required too
+    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"],
+                                           "capacity": "3"})
+    assert resp.headers["Location"].endswith("/profile/3")
+    assert user.profile.capacity == 3
 
 
 def test_staff_pages_are_staff_only(client):
@@ -147,3 +166,51 @@ def test_soft_answer_embedding_roundtrip(app):
     db.session.commit()
     db.session.expire_all()
     assert db.session.query(Answer).one().embedding[:2] == [0.1, 0.1]
+
+
+def _pdf(text: str) -> bytes:
+    """A one-page PDF containing `text`, enough for pypdf to extract."""
+    stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+            b"/Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offsets = b"%PDF-1.4\n", []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    return out + b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+
+
+def test_linkedin_import_suggests_but_does_not_save(client):
+    client.post("/register", data={"role": "mentor", "name": "Linked Mentor", "email": "lm@x.org",
+                                   "password": "longenough", "school": "State University"})
+    pdf = _pdf("Senior PM in Software Development. Leadership, public speaking. Spanish.")
+    about = {"name": "Linked Mentor", "email": "lm@x.org", "school": "State University",
+             "linkedin_url": "https://www.linkedin.com/in/lm"}
+    resp = client.post("/profile/1", data={**about, "linkedin_pdf": (io.BytesIO(pdf), "Profile.pdf")},
+                       content_type="multipart/form-data")
+    assert resp.headers["Location"].endswith("/profile/2")
+
+    user = db.session.query(User).filter_by(email="lm@x.org").one()
+    p = user.profile
+    assert p.linkedin_url == "https://www.linkedin.com/in/lm"
+    assert p.resume_file_name == "Profile.pdf"
+    assert p.linkedin_data["source"] == "keywords"
+    assert p.linkedin_data["industry"] == "Software Development"
+    assert "leadership" in p.linkedin_data["tags"]["development_areas"]
+    assert p.industry is None and p.development_areas == []  # suggestions only; saved by the form
+
+    client.post("/profile/2", data={"availability": ["Monday - morning"], "languages": ["English"]})
+    assert b"ring-amber-400" in client.get("/profile/3").data
+    client.post("/profile/3", data={})  # reviewed and cleared: suggestions aren't pre-selected again
+    assert b"ring-amber-400" not in client.get("/profile/3").data
+
+    resp = client.post("/profile/1", data={**about, "linkedin_pdf": (io.BytesIO(b"not a pdf"), "x.pdf")},
+                       content_type="multipart/form-data")
+    assert resp.headers["Location"].endswith("/profile/1")

@@ -56,7 +56,7 @@ go with them.
 | --- | --- | --- | --- |
 | `routes.py` | `/`, `/dashboard`, `/healthz`, `/internal/cron/reminders` | Landing page, each user's dashboard, health check, and the cron endpoint that sends scheduled reminders | `landing.html`, `dashboard.html` |
 | `auth.py` | `/register`, `/login`, `/logout` | Email and password accounts, plus the `role_required(...)` decorator that limits a page to certain roles | `auth/` |
-| `intake.py` | `/profile`, `/apply`, `/agreements` | Profiles, applications (the questions are in `QUESTIONS`), and signing digital agreements | `intake/` |
+| `intake.py` | `/profile/<step>`, `/apply`, `/agreements` | The 4-step sign-up form (`STEPS`; steps 1-2 required, see `REQUIRED`), application review and submit (the questions are in `QUESTIONS`), and signing digital agreements | `intake/` |
 | `program.py` | `/events`, `/matches`, `/messages/<id>`, `/feedback` | Events with prework and postwork uploads, attendance check-ins, messages between a mentor and mentee, and feedback ratings | `program/` |
 | `staff.py` | `/staff/...` | Staff-only pages: reviewing applicants, approving matches, creating events, and reports | `staff/` |
 

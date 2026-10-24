@@ -1,7 +1,7 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `2c50da610bc6`;
-Supabase `sparthill-hackathon` is at `31ed905ca990` as of Oct 23, 2026). Table names are the snake_cased
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `e7b3d51a8c42`;
+Supabase `sparthill-hackathon` is at `c4e1a7b2d9f0` as of Oct 23, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
 On Postgres, the `vector(384)` columns use pgvector (in the `extensions` schema) with HNSW
@@ -27,7 +27,7 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `career_interests` | legacy list, replaced by `industry`; no longer written |
 | `years_experience` | integer |
 | `languages`, `language_required` | list + "must share a language" flag. Matching treats a shared language as a hard filter; blank means English |
-| `availability` | hard filter: `"Monday - morning"` … `"Sunday - afternoon"`; a pair must share one slot |
+| `availability` | hard filter: `"Monday - morning"` … `"Sunday - night"` (morning, afternoon, evening, night); a pair must share one slot |
 | `industry` | soft filter: one of `taxonomy.INDUSTRIES`, or whatever the user typed; matched ignoring case |
 | `education_paths` | soft-filter list; scores 1 if the mentor has any of the mentee's picks |
 | `school`, `prefers_alumni` | asked at sign-up. Mentee's school / mentor's alma mater; same-school bonus only when the mentee opts in |
@@ -37,6 +37,7 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `student_groups`, `groups_opt_in` | sensitive; only used for matching if opted in; never shown to the other party |
 | `capacity` | mentors: max concurrent mentees |
 | `linkedin_url`, `resume_key`, `resume_file_name` | uploaded resume / LinkedIn PDF in storage |
+| `linkedin_data` | JSON parsed from the LinkedIn PDF (`app/linkedin.py`): headline, organization, school, industry, summary, years_experience, experience, education, activities, skills, suggested `tags`, and `source` (`llm` or `keywords`). Only suggestions: the form columns above hold what the user confirmed. Kept for matching |
 | `embedding`, `embedding_model` | `vector(384)` of all soft answers combined |
 
 ## Intake

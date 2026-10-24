@@ -109,6 +109,7 @@ class Profile(db.Model):
     linkedin_url = db.Column(db.String(300))
     resume_key = db.Column(db.String(500))  # storage key of the uploaded resume / LinkedIn PDF
     resume_file_name = db.Column(db.String(255))
+    linkedin_data = db.Column(db.JSON)  # parsed LinkedIn PDF (app/linkedin.py), for matching
 
     # Combined embedding of all soft answers, for one-shot nearest-neighbor lookups.
     embedding = db.Column(Embedding())

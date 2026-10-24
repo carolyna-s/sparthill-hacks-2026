@@ -7,7 +7,7 @@ Edit freely; existing profiles keep whatever tags they already have.
 # --- hard filters: a pair must overlap on these to be matched at all ----------
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-PERIODS = ["morning", "afternoon"]
+PERIODS = ["morning", "afternoon", "evening", "night"]
 AVAILABILITY = [f"{day} - {period}" for day in DAYS for period in PERIODS]
 
 LANGUAGES = [

@@ -1,21 +1,36 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, card, btn, status_badge, input_cls %}
+{% from "_macros.html" import csrf, card, btn, status_badge %}
+{% set draft = application.status == 'draft' %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-5">Application {{ status_badge(application.status) }}</h1>
-{% if unsigned %}
-  <div class="mb-4 rounded bg-amber-50 text-amber-800 text-sm px-4 py-2">
-    You have {{ unsigned|length }} agreement(s) to <a class="underline" href="{{ url_for('intake.agreements') }}">sign</a> before you can submit.</div>
+<div class="max-w-3xl mx-auto">
+<h1 class="text-2xl font-semibold mb-5">Your application {{ status_badge(application.status) }}</h1>
+
+{% if draft %}
+{% call card("Before you submit") %}
+  <ul class="text-sm space-y-2">
+    <li>{% if missing %}<span class="text-amber-700">•</span> Profile: add {{ missing|join(' and ') }}.
+          <a class="text-indigo-600" href="{{ url_for('intake.profile') }}">Finish your profile</a>
+        {% else %}<span class="text-emerald-700">✓</span> Profile complete{% endif %}</li>
+    <li>{% if unsigned %}<span class="text-amber-700">•</span> {{ unsigned|length }} agreement(s) to
+          <a class="text-indigo-600" href="{{ url_for('intake.agreements') }}">sign</a>
+        {% else %}<span class="text-emerald-700">✓</span> Agreements signed{% endif %}</li>
+  </ul>
+{% endcall %}
 {% endif %}
-<form method="post">
-  {{ csrf() }}
-  {% call card() %}
+
+{% call card("Your answers") %}
   {% for key, label in questions %}
-    <label class="block text-sm font-medium mb-1">{{ label }}</label>
-    <textarea name="{{ key }}" rows="3" class="{{ input_cls() }} mb-4" {{ 'disabled' if application.status != 'draft' }}>{{ application.answers.get(key, '') }}</textarea>
+    <p class="text-sm font-medium">{{ label }}</p>
+    <p class="text-sm text-slate-600 mb-3 whitespace-pre-line">{{ application.answers.get(key) or '—' }}</p>
   {% endfor %}
-  {% endcall %}
-  {% if application.status == 'draft' %}
-    <div class="flex gap-2">{{ btn("Save draft", "secondary", "action", "save") }} {{ btn("Submit application", "primary", "action", "submit") }}</div>
-  {% endif %}
+  {% if draft %}<a class="text-sm text-indigo-600" href="{{ url_for('intake.profile_step', step=4) }}">Edit answers</a>{% endif %}
+{% endcall %}
+
+{% if draft %}
+<form method="post" class="flex justify-end">
+  {{ csrf() }}
+  {{ btn("Submit application", "primary", "action", "submit") }}
 </form>
+{% endif %}
+</div>
 {% endblock %}

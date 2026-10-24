@@ -9,7 +9,7 @@ much of the cycle automated as possible. Staff keep the final say on every match
 
 | Component | What it covers | Status |
 | --- | --- | --- |
-| Intake | Separate mentor and mentee sign-up, profiles, applications, agreements, resume/LinkedIn-PDF import | Profiles, applications, and agreements are built. Import is planned (§6) |
+| Intake | Separate mentor and mentee sign-up, profiles, applications, agreements, resume/LinkedIn-PDF import | Profiles, applications, and agreements are built. LinkedIn PDF import is built; resume import is planned (§6) |
 | Matching | 4-stage pipeline: hard filters → structured score → embedding similarity → LLM context scaling | Schema live in Supabase. Basic engine built; pipeline planned (§4) |
 | Match review | Staff approve or deny every proposed pair. A deny requires feedback, which the algorithm learns from | Basic approve/reject built. Percent view, deny feedback, and load view planned (§5) |
 | Program tools | Prework/postwork, check-ins, reminders, messaging, **automated match emails**, **mentee confirm/withdraw** | Built except match emails and confirmation (§5.5–5.6) |

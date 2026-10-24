@@ -1,70 +1,160 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, card, btn, tag_picker, input_cls %}
+{% from "_macros.html" import csrf, card, field, req, tag_picker, input_cls %}
 {% set mentor = current_user.role == 'mentor' %}
+{% set period_hints = {'morning': '6am–12pm', 'afternoon': '12–5pm', 'evening': '5–9pm', 'night': 'after 9pm'} %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-5">Your profile</h1>
-<form method="post">
+<div class="max-w-3xl mx-auto">
+<h1 class="text-2xl font-semibold mb-1">Your profile</h1>
+<p class="text-sm text-slate-500 mb-6">Steps marked {{ req() }} are required to be matched. The rest are optional but help us find you a better fit.</p>
+
+{# Stepper: required steps, a dashed divider, then the optional ones. #}
+<nav aria-label="Sign-up steps" class="mb-6">
+  <ol class="flex items-start">
+    {% for label in steps %}
+      {% set n = loop.index %}
+      {% if n == 3 %}
+        <li aria-hidden="true" class="self-stretch flex flex-col items-center mx-1 sm:mx-3">
+          <span class="flex-1 border-l-2 border-dashed border-fuchsia-300"></span>
+          <span class="text-[10px] uppercase tracking-wide text-fuchsia-500 py-1">optional</span>
+          <span class="flex-1 border-l-2 border-dashed border-fuchsia-300"></span>
+        </li>
+      {% endif %}
+      {% set reachable = n <= 2 or not locked %}
+      <li class="flex-1 min-w-0">
+        <a {% if reachable and n != step %}href="{{ url_for('intake.profile_step', step=n) }}"{% endif %}
+           {% if n == step %}aria-current="step"{% endif %}
+           class="flex flex-col items-center gap-1 text-center {{ 'opacity-50 cursor-not-allowed' if not reachable }}">
+          <span class="w-8 h-8 rounded-full grid place-items-center text-sm font-medium
+                       {{ 'bg-indigo-600 text-white' if n == step else 'bg-emerald-100 text-emerald-800' if done.get(n) else 'bg-slate-200 text-slate-600' }}">
+            {{ '✓' if done.get(n) and n != step else n }}</span>
+          <span class="text-xs leading-tight {{ 'font-medium' if n == step else 'text-slate-600' }}">
+            {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }}{% if n <= 2 %} {{ req() }}{% endif %}</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ol>
+</nav>
+
+<form method="post" {% if step == 1 %}enctype="multipart/form-data"{% endif %}>
   {{ csrf() }}
+
+  {% if step == 1 %}
   {% call card("About you") %}
-  <div class="grid md:grid-cols-2 gap-3 mb-3">
-    <input name="headline" value="{{ p.headline }}" placeholder="{{ 'Current role' if mentor else 'Student / current role' }}" class="{{ input_cls() }}">
-    <input name="organization" value="{{ p.organization }}" placeholder="{{ 'Company or organization' if mentor else 'Organization or school' }}" class="{{ input_cls() }}">
-  </div>
-  <textarea name="bio" rows="4" placeholder="A short bio" class="{{ input_cls() }}">{{ p.bio }}</textarea>
-  {% if mentor %}
-    <label class="text-sm block mt-3">How many mentees can you take on?
-      <input type="number" name="capacity" min="1" max="5" value="{{ p.capacity }}" class="border rounded px-2 py-1 w-20 ml-2"></label>
-  {% endif %}
-  {% endcall %}
-
-  {% call card("When and how you can meet") %}
-  <p class="text-sm text-slate-500 mb-4">You'll only be matched with someone who shares at least one time slot and one language.</p>
-  <fieldset class="mb-4">
-    <legend class="text-sm font-medium mb-2">Availability <span class="font-normal text-slate-500">· required</span></legend>
-    <div class="grid grid-cols-[auto_1fr_1fr] gap-2 max-w-sm text-sm items-center">
-      <span></span>
-      {% for period in periods %}<span class="text-xs text-slate-500 text-center">{{ period }}</span>{% endfor %}
-      {% for day in days %}
-        <span class="pr-2">{{ day }}</span>
-        {% for period in periods %}
-          {% set slot = day ~ ' - ' ~ period %}
-          <label class="border rounded py-1 text-center cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
-            <input type="checkbox" name="availability" value="{{ slot }}" class="hidden" aria-label="{{ slot }}" {{ 'checked' if slot in p.availability }}>✓
-          </label>
-        {% endfor %}
-      {% endfor %}
+    <div class="grid sm:grid-cols-2 gap-x-3">
+      {% call field("Full name", required=True) %}
+        <input name="name" value="{{ current_user.name }}" required autocomplete="name" class="{{ input_cls() }}">
+      {% endcall %}
+      {% call field("Email", required=True) %}
+        <input name="email" type="email" value="{{ current_user.email }}" required autocomplete="email" class="{{ input_cls() }}">
+      {% endcall %}
+      {% call field("School you graduated from" if mentor else "School", required=True) %}
+        <input name="school" value="{{ p.school or '' }}" required class="{{ input_cls() }}">
+      {% endcall %}
+      {% call field("Company" if mentor else "Organization", hint=None if mentor else "optional") %}
+        <input name="organization" value="{{ p.organization or '' }}" autocomplete="organization" class="{{ input_cls() }}">
+      {% endcall %}
     </div>
-  </fieldset>
-  {{ tag_picker("languages", "Languages you're comfortable meeting in", taxonomy.languages, p.languages, hint="optional, defaults to English") }}
+    {% call field("Current role", hint="optional") %}
+      <input name="headline" value="{{ p.headline or '' }}" placeholder="{{ 'e.g. Senior Product Manager' if mentor else 'e.g. Sophomore, Computer Science' }}" class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("Short bio", hint="optional") %}
+      <textarea name="bio" rows="4" placeholder="A few sentences about you" class="{{ input_cls() }}">{{ p.bio or '' }}</textarea>
+    {% endcall %}
+
+    <div class="border-t pt-4">
+      {% call field("LinkedIn", hint="optional") %}
+        <input name="linkedin_url" type="url" value="{{ p.linkedin_url or '' }}" placeholder="https://www.linkedin.com/in/your-name" class="{{ input_cls() }}">
+      {% endcall %}
+      <p class="text-sm text-slate-500 mb-2">Save time: on your LinkedIn profile click <strong>More → Save to PDF</strong> and upload it here.
+        We'll pre-select suggested answers in the next steps (highlighted in amber) for you to review.</p>
+      <input name="linkedin_pdf" type="file" accept="application/pdf" aria-label="LinkedIn PDF" class="text-sm">
+      {% if p.resume_file_name %}<p class="text-xs text-slate-500 mt-2">Last imported: {{ p.resume_file_name }}</p>{% endif %}
+    </div>
   {% endcall %}
 
-  {% call card("What you're looking for" if not mentor else "What you bring") %}
-  <p class="text-sm text-slate-500 mb-4">These shape your match. Leave anything blank if you have no preference.</p>
-  <label class="block mb-4">
-    <span class="text-sm font-medium block mb-2">{{ "Industry you're interested in" if not mentor else "Industry you work in" }}</span>
-    <input name="industry" list="industries" value="{{ p.industry or '' }}" autocomplete="off"
-           placeholder="Start typing, e.g. Software Development" class="{{ input_cls() }} max-w-sm">
-    <datalist id="industries">{% for i in industries %}<option value="{{ i }}">{% endfor %}</datalist>
-  </label>
-  <label class="block mb-4">
-    <span class="text-sm font-medium block mb-2">Your interests</span>
-    <textarea name="interests" rows="2" placeholder="{{ 'Topics, fields, or hobbies you want to explore' if not mentor else 'Topics, fields, or hobbies you enjoy talking about' }}"
-              class="{{ input_cls() }}">{{ p.interests or '' }}</textarea>
-  </label>
-  {{ tag_picker("development_areas", "Skills you want to learn" if not mentor else "Skills you can teach", taxonomy.development_areas, p.development_areas) }}
-  {{ tag_picker("goals", "Your goals" if not mentor else "Goals you can help with", taxonomy.goals, p.goals) }}
-  <input name="goals_other" value="{{ p.goals_other or '' }}" aria-label="Other goals"
-         placeholder="Other goals (optional)" class="{{ input_cls() }} max-w-sm -mt-2 mb-4">
-  <label class="block mb-4">
-    <span class="text-sm font-medium block mb-2">{{ "What are you looking for from this mentorship program?" if not mentor else "What do you hope to offer through this mentorship program?" }}</span>
-    <textarea name="looking_for" rows="3" class="{{ input_cls() }}">{{ p.looking_for or '' }}</textarea>
-  </label>
-  {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, p.education_paths) }}
-  {% if not mentor and p.school %}
-    <label class="text-sm block"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
-      Prefer a mentor who also went to {{ p.school }}</label>
-  {% endif %}
+  {% elif step == 2 %}
+  {% call card("When and how you can meet") %}
+    <p class="text-sm text-slate-500 mb-4">You'll only be matched with someone who shares at least one time slot and one language.</p>
+    <fieldset class="mb-5">
+      <legend class="text-sm font-medium mb-2">When are you usually free? {{ req() }} <span class="font-normal text-slate-500">· pick all that apply</span></legend>
+      <div class="grid grid-cols-[auto_repeat(4,minmax(0,1fr))] gap-1.5 sm:gap-2 text-sm items-center max-w-xl">
+        <span></span>
+        {% for period in periods %}
+          <span class="text-center leading-tight"><span class="text-xs font-medium block">{{ period|capitalize }}</span>
+            <span class="text-[11px] text-slate-500 hidden sm:block">{{ period_hints[period] }}</span></span>
+        {% endfor %}
+        {% for day in days %}
+          <span class="pr-2"><span class="sm:hidden">{{ day[:3] }}</span><span class="hidden sm:inline">{{ day }}</span></span>
+          {% for period in periods %}
+            {% set slot = day ~ ' - ' ~ period %}
+            <label class="border rounded py-1.5 text-center cursor-pointer text-transparent hover:bg-slate-50 has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-400">
+              <input type="checkbox" name="availability" value="{{ slot }}" class="sr-only" aria-label="{{ day }} {{ period }}" {{ 'checked' if slot in p.availability }}>✓
+            </label>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </fieldset>
+    {{ tag_picker("languages", "Languages you're comfortable meeting in", taxonomy.languages, sel.languages, required=True, suggested=suggested.get('languages', ())) }}
+    {% if mentor %}
+      <fieldset>
+        <legend class="text-sm font-medium mb-2">How many mentees can you take on? {{ req() }}</legend>
+        <div class="flex gap-2">
+          {% for n in range(1, 6) %}
+            <label class="w-10 border rounded py-1.5 text-center text-sm cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-400">
+              <input type="radio" name="capacity" value="{{ n }}" class="sr-only" {{ 'checked' if n == p.capacity }}>{{ n }}
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    {% endif %}
   {% endcall %}
-  {{ btn("Save and continue") }}
+
+  {% elif step == 3 %}
+  {% call card("What you bring" if mentor else "What you're looking for") %}
+    <p class="text-sm text-slate-500 mb-4">These shape your match. Skip anything you have no preference on.</p>
+    {% call field("Industry you work in" if mentor else "Industry you're interested in") %}
+      <input name="industry" list="industries" value="{{ industry or '' }}" autocomplete="off"
+             placeholder="Start typing, e.g. Software Development" class="{{ input_cls() }} max-w-sm {{ 'ring-2 ring-amber-400' if suggested.industry }}">
+      <datalist id="industries">{% for i in industries %}<option value="{{ i }}">{% endfor %}</datalist>
+    {% endcall %}
+    {{ tag_picker("development_areas", "Skills you can teach" if mentor else "Skills you want to learn", taxonomy.development_areas, sel.development_areas, suggested=suggested.get('development_areas', ())) }}
+    {{ tag_picker("goals", "Goals you can help with" if mentor else "Your goals", taxonomy.goals, sel.goals, suggested=suggested.get('goals', ())) }}
+    <input name="goals_other" value="{{ p.goals_other or '' }}" aria-label="Other goals"
+           placeholder="Other goals" class="{{ input_cls() }} max-w-sm -mt-2 mb-5">
+    {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, sel.education_paths, suggested=suggested.get('education_paths', ())) }}
+    {% if not mentor and p.school %}
+      <label class="text-sm flex items-center gap-2"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
+        Prefer a mentor who also went to {{ p.school }}</label>
+    {% endif %}
+  {% endcall %}
+
+  {% else %}
+  {% set locked_answers = application and application.status != 'draft' %}
+  {% call card("In your own words") %}
+    <p class="text-sm text-slate-500 mb-4">Staff read these when reviewing applications and making matches. A few sentences each is plenty.</p>
+    {% call field("Topics, fields, or hobbies you enjoy talking about" if mentor else "Topics, fields, or hobbies you want to explore") %}
+      <textarea name="interests" rows="2" class="{{ input_cls() }}">{{ p.interests or '' }}</textarea>
+    {% endcall %}
+    {% call field("What do you hope to offer through this program?" if mentor else "What are you looking for from this program?") %}
+      <textarea name="looking_for" rows="3" class="{{ input_cls() }}">{{ p.looking_for or '' }}</textarea>
+    {% endcall %}
+    {% for key, label in questions %}
+      {% call field(label) %}
+        <textarea name="{{ key }}" rows="3" class="{{ input_cls() }}" {{ 'disabled' if locked_answers }}>{{ application.answers.get(key, '') if application else '' }}</textarea>
+      {% endcall %}
+    {% endfor %}
+    {% if locked_answers %}<p class="text-xs text-slate-500">Your application is {{ application.status }}, so its answers can't be changed.</p>{% endif %}
+  {% endcall %}
+  {% endif %}
+
+  {# Next comes first in the markup so pressing Enter goes forward, not back. #}
+  <div class="flex flex-row-reverse justify-between items-center">
+    <button name="nav" value="next" class="text-sm rounded px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700">
+      {{ "Review and submit →" if step == steps|length else "Next →" }}</button>
+    {% if step > 1 %}
+      <button name="nav" value="back" formnovalidate class="text-sm rounded px-4 py-2 border bg-white hover:bg-slate-50">← Back</button>
+    {% endif %}
+  </div>
 </form>
+</div>
 {% endblock %}

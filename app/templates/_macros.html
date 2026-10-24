@@ -7,12 +7,22 @@
 </section>
 {% endmacro %}
 
-{% macro tag_picker(name, label, options, selected, hint=None) %}
-<fieldset class="mb-4">
-  <legend class="text-sm font-medium mb-2">{{ label }}{% if hint %} <span class="font-normal text-slate-500">· {{ hint }}</span>{% endif %}</legend>
+{% macro req() %}<span class="text-red-600" title="Required">*</span>{% endmacro %}
+
+{# A labelled form control; the control itself goes in the call block. #}
+{% macro field(label, required=False, hint=None) %}
+<label class="block mb-4">
+  <span class="text-sm font-medium block mb-1">{{ label }}{% if required %} {{ req() }}{% endif %}{% if hint %} <span class="font-normal text-slate-500">· {{ hint }}</span>{% endif %}</span>
+  {{ caller() }}
+</label>
+{% endmacro %}
+
+{% macro tag_picker(name, label, options, selected, hint=None, suggested=(), required=False) %}
+<fieldset class="mb-5">
+  <legend class="text-sm font-medium mb-2">{{ label }}{% if required %} {{ req() }}{% endif %}{% if hint %} <span class="font-normal text-slate-500">· {{ hint }}</span>{% endif %}</legend>
   <div class="flex flex-wrap gap-2">
     {% for opt in options %}
-      <label class="text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
+      <label class="text-sm border rounded-full px-3 py-1 cursor-pointer {{ 'ring-2 ring-amber-400' if opt in suggested }} has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
         <input type="checkbox" name="{{ name }}" value="{{ opt }}" class="hidden" {{ 'checked' if opt in selected }}>{{ opt }}
       </label>
     {% endfor %}

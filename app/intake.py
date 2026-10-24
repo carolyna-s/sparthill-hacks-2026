@@ -5,10 +5,10 @@ from __future__ import annotations
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
+from . import linkedin, storage
 from .auth import role_required
-from .matching import HARD_FILTER_DEFAULTS
 from .extensions import db
-from .models import Agreement, AgreementSignature, Application, Cohort, Profile, utcnow
+from .models import Agreement, AgreementSignature, Application, Cohort, User, utcnow
 from .program import unsigned_agreements
 from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY
 
@@ -30,13 +30,25 @@ QUESTIONS = {
 }
 
 
-# Hard filters: matching can't place someone without these, so they're required. Languages is
-# a hard filter too, but optional: blank means English (matching.HARD_FILTER_DEFAULTS).
-REQUIRED = {"availability": "at least one time you're available"}
+# The sign-up form, one page per step. Steps 1-2 (contact info and the hard filters matching
+# can't do without) are required; 3-4 open once they're done and can be left blank.
+STEPS = ("About you", "Availability & language", "Preferences", "In your own words")
+
+# (step, check, what to ask for when it's missing)
+REQUIRED = [
+    (1, lambda u: u.name, "your name"),
+    (1, lambda u: u.email, "your email"),
+    (1, lambda u: u.profile.school, "your school"),
+    (2, lambda u: u.profile.availability, "at least one time you're available"),
+    (2, lambda u: u.profile.languages, "at least one language"),
+]
+
+# Tag pickers on each step.
+STEP_TAGS = {2: ("availability", "languages"), 3: ("development_areas", "goals", "education_paths")}
 
 
-def missing_profile_fields(p: Profile) -> list[str]:
-    return [label for dim, label in REQUIRED.items() if not getattr(p, dim)]
+def missing_fields(user: User, step: int | None = None) -> list[str]:
+    return [label for s, ok, label in REQUIRED if step in (None, s) and not ok(user)]
 
 
 def canonical_industry(typed: str) -> str:
@@ -45,65 +57,166 @@ def canonical_industry(typed: str) -> str:
     return next((i for i in INDUSTRIES if i.lower() == typed.lower()), typed)
 
 
-@bp.route("/profile", methods=["GET", "POST"])
+def _application(user: User) -> Application:
+    if user.application is None:
+        cohort = db.session.query(Cohort).filter_by(is_active=True).order_by(Cohort.id.desc()).first()
+        user.application = Application(cohort_id=cohort.id if cohort else None, status="draft", answers={})
+    return user.application
+
+
+@bp.get("/profile")
 @role_required("mentee", "mentor")
 def profile():
-    p = current_user.profile
-    if request.method == "POST":
-        p.headline = request.form.get("headline", "").strip()
-        p.bio = request.form.get("bio", "").strip()
-        p.organization = request.form.get("organization", "").strip()
-        p.industry = canonical_industry(request.form.get("industry", ""))
-        for field in ("interests", "goals_other", "looking_for"):
-            setattr(p, field, request.form.get(field, "").strip())
-        for dim, allowed in TAXONOMY.items():
-            setattr(p, dim, [t for t in request.form.getlist(dim) if t in allowed])
-        p.languages = p.languages or HARD_FILTER_DEFAULTS["languages"]
-        if current_user.role == "mentor":
-            p.capacity = max(1, min(5, int(request.form.get("capacity") or 1)))
-        else:
-            p.prefers_alumni = bool(request.form.get("prefers_alumni"))
-        db.session.commit()
-        missing = missing_profile_fields(p)
-        if missing:
-            flash("Saved, but matching needs " + " and ".join(missing) + ".", "error")
-            return redirect(url_for("intake.profile"))
-        flash("Profile saved.", "ok")
+    """Resume the form at the first required step that isn't done."""
+    unfinished = [s for s, ok, _ in REQUIRED if not ok(current_user)]
+    return redirect(url_for("intake.profile_step", step=min(unfinished, default=1)))
+
+
+@bp.route("/profile/<int:step>", methods=["GET", "POST"])
+@role_required("mentee", "mentor")
+def profile_step(step: int):
+    if not 1 <= step <= len(STEPS):
+        abort(404)
+    if step > 2 and missing_fields(current_user):
+        flash("Finish the required steps first: add " + " and ".join(missing_fields(current_user)) + ".", "error")
+        return redirect(url_for("intake.profile"))
+    if request.method == "GET":
+        return _render_step(step)
+
+    ok = SAVE[step](current_user)
+    db.session.commit()
+    if request.form.get("nav") == "back":
+        return redirect(url_for("intake.profile_step", step=step - 1))
+    missing = missing_fields(current_user, step)
+    if missing:
+        flash("To continue, add " + " and ".join(missing) + ".", "error")
+    if missing or not ok:
+        return redirect(url_for("intake.profile_step", step=step))
+    if step == len(STEPS):
         return redirect(url_for("intake.apply"))
-    return render_template("intake/profile.html", p=p, days=DAYS, periods=PERIODS, industries=INDUSTRIES)
+    return redirect(url_for("intake.profile_step", step=step + 1))
+
+
+def _save_about(user: User) -> bool:
+    p, form, ok = user.profile, request.form, True
+    user.name = form.get("name", "").strip()[:120] or user.name
+    email = form.get("email", "").strip().lower()
+    if email and email != user.email:
+        if "@" not in email:
+            flash("That email doesn't look right.", "error")
+            ok = False
+        elif db.session.query(User).filter_by(email=email).first():
+            flash("Another account already uses that email.", "error")
+            ok = False
+        else:
+            user.email = email
+    p.school = form.get("school", "").strip()[:200] or None
+    for f in ("headline", "organization"):
+        setattr(p, f, form.get(f, "").strip()[:200])
+    p.bio = form.get("bio", "").strip()
+    p.linkedin_url = form.get("linkedin_url", "").strip()[:300] or None
+    file = request.files.get("linkedin_pdf")
+    if file and file.filename:
+        ok = _import_linkedin(user, file) and ok
+    return ok
+
+
+def _import_linkedin(user: User, file) -> bool:
+    """Parse a LinkedIn PDF into suggestions for steps 2-3. Nothing on the form changes yet."""
+    data = file.read()
+    if not data.startswith(b"%PDF"):
+        flash("That file isn't a PDF. On LinkedIn use More → Save to PDF, then upload it here.", "error")
+        return False
+    file.stream.seek(0)
+    p = user.profile
+    p.resume_key = storage.save(file, f"linkedin/{user.id}")
+    p.resume_file_name = file.filename
+    parsed = linkedin.parse(data, user.role)
+    if parsed.get("industry"):
+        parsed["industry"] = canonical_industry(parsed["industry"])
+    p.linkedin_data = parsed
+    n = sum(len(v) for v in parsed["tags"].values()) + bool(parsed.get("industry"))
+    flash(f"Imported your LinkedIn profile: {n} suggestions are highlighted in the next steps.", "ok")
+    return True
+
+
+def _save_tags(user: User, step: int) -> None:
+    p = user.profile
+    for dim in STEP_TAGS[step]:
+        setattr(p, dim, [t for t in request.form.getlist(dim) if t in TAXONOMY[dim]])
+    if p.linkedin_data:  # suggestions on this step have been seen; don't re-add ones they removed
+        p.linkedin_data = {**p.linkedin_data, "reviewed": sorted({*p.linkedin_data.get("reviewed", []), step})}
+
+
+def _save_availability(user: User) -> bool:
+    _save_tags(user, 2)
+    if user.role == "mentor":
+        user.profile.capacity = max(1, min(5, int(request.form.get("capacity") or 1)))
+    return True
+
+
+def _save_preferences(user: User) -> bool:
+    p = user.profile
+    _save_tags(user, 3)
+    p.industry = canonical_industry(request.form.get("industry", ""))
+    p.goals_other = request.form.get("goals_other", "").strip()
+    if user.role == "mentee":
+        p.prefers_alumni = bool(request.form.get("prefers_alumni"))
+    return True
+
+
+def _save_questions(user: User) -> bool:
+    for f in ("interests", "looking_for"):
+        setattr(user.profile, f, request.form.get(f, "").strip())
+    app_row = _application(user)
+    if app_row.status == "draft":
+        app_row.answers = {k: request.form.get(k, "").strip() for k, _ in QUESTIONS[user.role]}
+    return True
+
+
+SAVE = {1: _save_about, 2: _save_availability, 3: _save_preferences, 4: _save_questions}
+
+
+def _render_step(step: int):
+    p = current_user.profile
+    data = p.linkedin_data or {}
+    parsed = {} if step in data.get("reviewed", []) else data  # LinkedIn suggestions, pre-selected
+    suggested_tags = parsed.get("tags", {})
+    sel = {dim: list(dict.fromkeys(getattr(p, dim) + suggested_tags.get(dim, []))) for dim in TAXONOMY}
+    sel["languages"] = sel["languages"] or ["English"]  # the usual answer; one click to change
+    suggested = {dim: set(v) - set(getattr(p, dim)) for dim, v in suggested_tags.items()}
+    suggested["industry"] = bool(parsed.get("industry")) and not p.industry
+    return render_template("intake/profile.html", p=p, step=step, steps=STEPS,
+                           done={s: not missing_fields(current_user, s) for s in (1, 2)},
+                           locked=bool(missing_fields(current_user)),
+                           days=DAYS, periods=PERIODS, industries=INDUSTRIES, sel=sel,
+                           industry=p.industry or parsed.get("industry", ""), suggested=suggested,
+                           questions=QUESTIONS[current_user.role],
+                           application=current_user.application)
 
 
 @bp.route("/apply", methods=["GET", "POST"])
 @role_required("mentee", "mentor")
 def apply():
-    app_row = current_user.application
-    if app_row is None:
-        cohort = db.session.query(Cohort).filter_by(is_active=True).order_by(Cohort.id.desc()).first()
-        app_row = Application(user_id=current_user.id, cohort_id=cohort.id if cohort else None,
-                              status="draft", answers={})
-        db.session.add(app_row)
-    questions = QUESTIONS[current_user.role]
+    """Review the answers from the sign-up form and submit them."""
+    app_row = _application(current_user)
     if request.method == "POST":
         if app_row.status != "draft":
             abort(409)
-        app_row.answers = {k: request.form.get(k, "").strip() for k, _ in questions}
-        if request.form.get("action") == "submit":
-            if not all(app_row.answers.values()):
-                flash("Answer every question before submitting.", "error")
-            elif missing_profile_fields(current_user.profile):
-                flash("Finish your profile before submitting: add "
-                      + " and ".join(missing_profile_fields(current_user.profile)) + ".", "error")
-            elif unsigned_agreements(current_user):
-                flash("Sign the program agreements before submitting.", "error")
-            else:
-                app_row.status = "submitted"
-                app_row.submitted_at = utcnow()
-                flash("Application submitted. Staff will review it soon.", "ok")
+        missing = missing_fields(current_user)
+        if missing:
+            flash("Finish your profile before submitting: add " + " and ".join(missing) + ".", "error")
+        elif unsigned_agreements(current_user):
+            flash("Sign the program agreements before submitting.", "error")
+        else:
+            app_row.status = "submitted"
+            app_row.submitted_at = utcnow()
+            flash("Application submitted. Staff will review it soon.", "ok")
         db.session.commit()
         return redirect(url_for("intake.apply"))
     db.session.commit()
-    return render_template("intake/apply.html", application=app_row, questions=questions,
-                           unsigned=unsigned_agreements(current_user))
+    return render_template("intake/apply.html", application=app_row, questions=QUESTIONS[current_user.role],
+                           missing=missing_fields(current_user), unsigned=unsigned_agreements(current_user))
 
 
 @bp.get("/agreements")

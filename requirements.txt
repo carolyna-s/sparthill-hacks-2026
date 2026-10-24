@@ -14,3 +14,7 @@ pgvector==0.5.1  # vector(384) columns for soft-answer embeddings
 
 # AWS: S3 uploads, SES email (only used when configured)
 boto3==1.43.118
+
+# LinkedIn PDF import (app/linkedin.py)
+anthropic==2.2.0
+pypdf==6.21.2

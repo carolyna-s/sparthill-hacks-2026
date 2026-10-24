@@ -34,6 +34,9 @@ class Config:
 
     CRON_SECRET = os.getenv("CRON_SECRET", "")
 
+    # LinkedIn PDF import uses Claude when set, else a keyword pass (app/linkedin.py)
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
     # Reminder windows
     DUE_SOON_HOURS = 48
     UNREAD_MESSAGE_HOURS = 24
