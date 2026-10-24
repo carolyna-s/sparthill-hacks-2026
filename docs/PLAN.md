@@ -135,9 +135,14 @@ groups 0.10, goals 0.10, organization 0.05, concentration 0.05.
 
 ### 4.4 Stage 3: semantic score (vector embeddings)
 
-- Every soft answer is embedded when saved (384-dim, `all-MiniLM-L6-v2` run in-process with
-  `sentence-transformers`. It's free and runs on CPU; `gte-small` through a Supabase Edge
-  Function is a drop-in alternative). Stored in `answer.embedding` (pgvector, HNSW index).
+- **Built for the sign-up form's text boxes** (interests, other goals, what they're looking
+  for): each is embedded when saved with OpenAI `text-embedding-3-small` at 384 dims
+  (`app/embeddings.py`), stored in `profile.text_embeddings`, and scored as the `text` weight in
+  `app/matching.py`. Blank `OPENAI_API_KEY` turns it off; `flask embed` backfills. Claude has no
+  embedding model, so this is the one non-Anthropic API. The notes below are the original
+  design for the `question`/`answer` tables.
+- Every soft answer is embedded when saved (384-dim). Stored in `answer.embedding` (pgvector,
+  HNSW index).
 - For each paired question q: `sim_q = cosine(mentee answer, mentor's paired answer)`, rescaled
   from the typical range to 0–1.
 - `M = Σ weight_q·sim_q / Σ weight_q`. Unanswered questions are skipped.

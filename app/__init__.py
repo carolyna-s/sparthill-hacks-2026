@@ -42,6 +42,16 @@ def create_app(overrides: dict | None = None) -> Flask:
 
         click.echo(f"sent {send_due_reminders()} reminders")
 
+    @app.cli.command("embed")
+    def embed_cmd():
+        """Embed free-text answers that are new or changed (needs OPENAI_API_KEY)."""
+        from .embeddings import backfill
+
+        if not app.config["OPENAI_API_KEY"]:
+            raise click.ClickException("OPENAI_API_KEY isn't set, so there's nothing to embed with.")
+        done, failed = backfill()
+        click.echo(f"{done} profiles up to date" + (f", {failed} failed (see the log)" if failed else ""))
+
     @app.cli.command("seed")
     def seed_cmd():
         """Fill the database with demo users, a cohort, and events."""

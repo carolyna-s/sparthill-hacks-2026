@@ -1,5 +1,5 @@
 from app import matching
-from app.matching import assign, rank_mentors, score_pair
+from app.matching import SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
 
 MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
           "development_areas": ["writing", "technical skills"]}
@@ -84,3 +84,25 @@ def test_propose_all_on_seed_data(app):
     assert len({m.mentee_id for m in created}) == 4
     assert matching.unmatched_mentee_ids() == set()
     assert matching.propose_all() == []
+
+
+def test_text_similarity_is_rescaled_and_averaged_over_shared_answers():
+    same, opposite = [1.0, 0.0], [0.0, 1.0]
+    mentee = {"text_vectors": {"looking_for": same, "interests": same}}
+    mentor = {"text_vectors": {"looking_for": same, "interests": opposite, "goals_other": same}}
+    assert text_similarity(mentee, mentor) == {"interests": 0.0, "looking_for": 1.0}
+    score, breakdown = score_pair(mentee, mentor, {"text": 1.0})
+    assert score == 50.0
+    assert breakdown["text"]["shared"] == ["interests 0%", "looking for 100%"]
+    lo, hi = SEMANTIC_RANGE
+    mid = (lo + hi) / 2
+    assert abs(text_similarity({"text_vectors": {"interests": [mid, (1 - mid ** 2) ** 0.5]}},
+                               {"text_vectors": {"interests": same}})["interests"] - 0.5) < 1e-9
+
+
+def test_text_is_left_out_when_there_is_nothing_to_compare():
+    weights = {"industry": 0.5, "text": 0.5}
+    mentee = {"industry": "Banking", "text_vectors": {"looking_for": [1.0, 0.0]}}
+    mentor = {"industry": "Banking", "text_vectors": {}}  # not embedded (no key, or blank)
+    score, breakdown = score_pair(mentee, mentor, weights)
+    assert score == 100.0 and "text" not in breakdown

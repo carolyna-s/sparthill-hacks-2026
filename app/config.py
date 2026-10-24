@@ -37,6 +37,10 @@ class Config:
     # LinkedIn PDF import uses Claude when set, else a keyword pass (app/linkedin.py)
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+    # Embeddings of the free-text answers for matching (app/embeddings.py); off when blank
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
     # Reminder windows
     DUE_SOON_HOURS = 48
     UNREAD_MESSAGE_HOURS = 24

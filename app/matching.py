@@ -14,10 +14,12 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
   penalized for breadth.
 - preference dimensions (education path): 1 if the mentor has any of the mentee's picks.
 - alumni: 1 if the mentee asked for a same-school mentor and the schools match.
+- text: how close the free-text answers are in meaning (app/embeddings.py), averaged over
+  the text boxes both sides filled in; cosine similarity rescaled from SEMANTIC_RANGE to 0-1.
 
 A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
-it doesn't drag every score down. Free-text answers (interests, other goals, what they're
-looking for) aren't scored yet; they're for the planned semantic stage (docs/PLAN.md §4.4). Mentors at capacity are excluded.
+it doesn't drag every score down. Text is different: a pair with no answers to compare (blank,
+or not embedded yet) leaves it out of the score entirely, weight included. Mentors at capacity are excluded.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -29,6 +31,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import func
 
+from . import embeddings
 from .extensions import db
 from .models import Application, Match, Profile, User
 
@@ -37,7 +40,19 @@ HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
 COVERAGE = ("development_areas", "goals")
 PREFERENCE = ("education_paths",)
 
-WEIGHTS = {"industry": 0.35, "development_areas": 0.25, "goals": 0.20, "education_paths": 0.10, "alumni": 0.10}
+WEIGHTS = {
+    "industry": 0.28,
+    "development_areas": 0.20,
+    "goals": 0.16,
+    "text": 0.20,
+    "education_paths": 0.08,
+    "alumni": 0.08
+    }
+
+# Cosine similarities between OpenAI embeddings of short answers rarely go below ~0.2 even for
+# unrelated text, or above ~0.7 for close paraphrases; stretch that band to 0-1. Tune once
+# there are real answers to look at.
+SEMANTIC_RANGE = (0.2, 0.7)
 
 FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("industry", "school", "prefers_alumni")
 
@@ -67,10 +82,30 @@ def _same(mentee: dict, mentor: dict, key: str) -> bool:
     return bool(a) and a == b
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = (sum(x * x for x in a) * sum(y * y for y in b)) ** 0.5
+    return dot / norm if norm else 0.0
+
+
+def text_similarity(mentee: dict, mentor: dict) -> dict[str, float]:
+    """0-1 similarity per text box both sides have a vector for."""
+    a, b = mentee.get("text_vectors") or {}, mentor.get("text_vectors") or {}
+    lo, hi = SEMANTIC_RANGE
+    return {f: min(1.0, max(0.0, (_cosine(a[f], b[f]) - lo) / (hi - lo)))
+            for f in embeddings.TEXT_FIELDS if f in a and f in b}
+
+
 def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[float, dict]:
-    total, breakdown = 0.0, {}
+    total, used, breakdown = 0.0, 0.0, {}
     for dim, w in weights.items():
-        if dim == "industry":
+        if dim == "text":
+            sims = text_similarity(mentee, mentor)
+            if not sims:
+                continue  # nothing to compare: leave text out of this pair's score
+            sim = sum(sims.values()) / len(sims)
+            shared = [f"{f.replace('_', ' ')} {round(100 * s)}%" for f, s in sims.items()]
+        elif dim == "industry":
             wanted = (mentee.get("industry") or "").strip()
             shared = [mentor["industry"]] if _same(mentee, mentor, "industry") else []
             sim = (1.0 if shared else 0.0) if wanted else 1.0
@@ -88,8 +123,9 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             else:
                 sim = len(shared) / len(wanted)
         total += w * sim
+        used += w
         breakdown[dim] = {"coverage": round(sim, 3), "shared": shared, "weight": w}
-    return round(100 * total / sum(weights.values()), 1), breakdown
+    return round(100 * total / used, 1), breakdown
 
 
 def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, int],
@@ -135,7 +171,7 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
 # --- DB adapters -------------------------------------------------------------
 
 def _tags(p: Profile) -> dict:
-    return {f: getattr(p, f) for f in FIELDS}
+    return {**{f: getattr(p, f) for f in FIELDS}, "text_vectors": embeddings.vectors(p)}
 
 
 def accepted_profiles(role: str) -> dict[int, dict]:

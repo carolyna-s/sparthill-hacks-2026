@@ -88,6 +88,7 @@ Quick tour:
 | --- | --- |
 | Run tests | `pytest` (always uses a throwaway SQLite DB, never `.env`'s) |
 | Send due reminders | `flask send-reminders` (prints emails unless `EMAIL_BACKEND=ses`) |
+| Embed text answers for matching | `flask embed` (needs `OPENAI_API_KEY`; only calls the API for new or changed answers) |
 | Change the schema | edit `app/models.py`, then `flask db migrate -m "what changed"` and `flask db upgrade`, then commit `migrations/versions/*` |
 | Run like production | `gunicorn -c gunicorn.conf.py wsgi:app` |
 | Production container | `docker build -t mentorship . && docker run -p 8000:8000 --env-file .env mentorship` |
@@ -98,13 +99,14 @@ Full guide, including where to put new code: [docs/STRUCTURE.md](STRUCTURE.md).
 
 ```
 app/
-  __init__.py     app factory + CLI commands (seed, send-reminders)
+  __init__.py     app factory + CLI commands (seed, send-reminders, embed)
   config.py       settings from .env
   models.py       all tables (docs/SCHEMA.md)
   taxonomy.py     dropdown/tag vocabularies used by profiles and matching
   auth.py         register / login / logout, role_required
   intake.py       profiles, applications, digital agreements
   matching.py     scoring, ranking, capacity-aware assignment
+  embeddings.py   OpenAI embeddings of free-text answers, for the text part of the score
   program.py      events, prework/postwork, check-ins, messaging, feedback
   reminders.py    idempotent reminder sweep
   staff.py        applicant review, match approval, events, reports
@@ -130,6 +132,7 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 | `EMAIL_BACKEND` | `console` | `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |
+| `OPENAI_API_KEY` | text answers not used in matching | OpenAI API key (embeddings only), then run `flask embed` once |
 
 ## Troubleshooting
 

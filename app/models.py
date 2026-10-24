@@ -111,6 +111,8 @@ class Profile(db.Model):
     resume_file_name = db.Column(db.String(255))
     linkedin_data = db.Column(db.JSON)  # parsed LinkedIn PDF (app/linkedin.py), for matching
 
+    # Per-answer embeddings of interests / goals_other / looking_for (app/embeddings.py).
+    text_embeddings = db.Column(db.JSON)
     # Combined embedding of all soft answers, for one-shot nearest-neighbor lookups.
     embedding = db.Column(Embedding())
     embedding_model = db.Column(db.String(80))

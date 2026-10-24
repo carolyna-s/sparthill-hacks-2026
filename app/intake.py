@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
-from . import linkedin, storage
+from . import embeddings, linkedin, storage
 from .auth import role_required
 from .extensions import db
 from .models import Agreement, AgreementSignature, Application, Cohort, User, utcnow
@@ -84,6 +84,8 @@ def profile_step(step: int):
         return _render_step(step)
 
     ok = SAVE[step](current_user)
+    if step in (3, 4):  # the steps with text boxes
+        embeddings.refresh(current_user.profile)
     db.session.commit()
     if request.form.get("nav") == "back":
         return redirect(url_for("intake.profile_step", step=step - 1))

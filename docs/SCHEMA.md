@@ -1,7 +1,7 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `e7b3d51a8c42`;
-Supabase `sparthill-hackathon` is at `c4e1a7b2d9f0` as of Oct 23, 2026). Table names are the snake_cased
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `c6557a04922b`;
+Supabase `sparthill-hackathon` is at `c6557a04922b` as of Oct 23, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
 On Postgres, the `vector(384)` columns use pgvector (in the `extensions` schema) with HNSW
@@ -38,7 +38,8 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `capacity` | mentors: max concurrent mentees |
 | `linkedin_url`, `resume_key`, `resume_file_name` | uploaded resume / LinkedIn PDF in storage |
 | `linkedin_data` | JSON parsed from the LinkedIn PDF (`app/linkedin.py`): headline, organization, school, industry, summary, years_experience, experience, education, activities, skills, suggested `tags`, and `source` (`llm` or `keywords`). Only suggestions: the form columns above hold what the user confirmed. Kept for matching |
-| `embedding`, `embedding_model` | `vector(384)` of all soft answers combined |
+| `text_embeddings` | JSON: `{"model": "text-embedding-3-small:384", "fields": {field: {"hash", "vector"}}}` for `interests` / `goals_other` / `looking_for` (`app/embeddings.py`); the hash ties each vector to the text it came from |
+| `embedding`, `embedding_model` | `vector(384)` of all soft answers combined (not filled yet) |
 
 ## Intake
 

@@ -8,6 +8,7 @@ os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix
 os.environ["S3_BUCKET"] = ""
 os.environ["EMAIL_BACKEND"] = "console"
 os.environ["ANTHROPIC_API_KEY"] = ""  # LinkedIn import uses the offline keyword pass
+os.environ["OPENAI_API_KEY"] = ""  # no embedding calls; tests stub app.embeddings.embed
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
