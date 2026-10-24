@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, tags %}
-{% from "staff/_match.html" import why, denial, post with context %}
+{% from "staff/_match.html" import why, score_or_flag, denial, post with context %}
 {% block content %}
 <div class="flex flex-wrap gap-2 justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Matching</h1>
@@ -19,7 +19,7 @@
   <tr class="border-t align-top">
     <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id, queue=1) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a>
       {% if m.rematch_round > 1 %}<span class="ml-1 text-xs rounded px-1.5 py-0.5 bg-sky-100 text-sky-800">re-match #{{ m.rematch_round }}</span>{% endif %}</td>
-    <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
+    <td class="py-2 text-lg font-semibold">{{ score_or_flag(m.score) }}</td>
     <td class="py-2">{{ why(m.score_breakdown) }}</td>
     <td class="py-2 text-right whitespace-nowrap">
       <a href="{{ url_for('staff.match_review', match_id=m.id, queue=1) }}" class="inline-block text-sm text-indigo-600 mr-1">More info</a>
@@ -88,7 +88,7 @@
             {{ btn("Add to proposals", "secondary") }}</form>
         </td>
       </tr>
-      {% else %}<tr><td class="text-slate-500">No free mentor shares a time slot and language. Run matching to pair them with whoever is left.</td></tr>{% endfor %}
+      {% else %}<tr><td class="text-slate-500">No free mentor shares a time slot. Run matching to pair them with whoever is left.</td></tr>{% endfor %}
     </table>
   </div>
 {% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}
@@ -110,7 +110,7 @@
 <table class="w-full text-sm">
   {% for m in approved %}
   <tr class="border-t">
-    <td class="py-2"><a class="hover:text-brand-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</a></td><td>{{ m.score }}</td>
+    <td class="py-2"><a class="hover:text-brand-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</a></td><td>{{ score_or_flag(m.score) }}</td>
     <td class="text-right whitespace-nowrap"><a class="text-brand-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
       {{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End",
                confirm="Are you sure you want to proceed with ending the match (" ~ m.mentee.name ~ " → " ~ m.mentor.name ~ ")?") }}</td>

@@ -19,8 +19,8 @@ created by an admin.
    a password (8+ characters).
 2. **Onboard.** Until onboarding is done, every page except the profile steps sends you back to
    the step you were on ("Please complete onboarding to access …"). In order:
-   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required, since
-     matching filters on them), then *Preferences* and *In your own words* (optional). A LinkedIn
+   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required:
+     matching filters on time slots and favors a shared language), then *Preferences* and *In your own words* (optional). A LinkedIn
      PDF can be uploaded to pre-fill suggestions.
    - **Agreements**: sign each active agreement for your role by typing your name.
    - **Application**: answer the application questions and submit.

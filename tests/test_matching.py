@@ -44,24 +44,30 @@ def test_alumni_only_counts_when_requested():
     assert score_pair({"school": " state university", "prefers_alumni": True}, mentor, weights)[0] == 100.0
 
 
-def test_hard_filters_drop_pairs_without_shared_time_or_language():
+def test_hard_filter_drops_pairs_without_a_shared_time_slot_only():
     mentee = {**MENTEE, "availability": ["Monday - morning"], "languages": ["English"]}
     mentors = {
         1: {**MENTEE, "availability": ["Monday - morning"], "languages": ["English", "Spanish"]},
         2: {**MENTEE, "availability": ["Tuesday - morning"], "languages": ["English"]},
-        3: {**MENTEE, "availability": ["Monday - morning"], "languages": ["Spanish"]},
-        4: MENTEE,  # no availability: not filtered; no languages: English
+        3: {**MENTEE, "availability": ["Monday - morning"], "languages": ["Spanish"]},  # no shared language: kept
+        4: MENTEE,  # no availability: not filtered
     }
     ranked = rank_mentors(mentee, mentors, open_slots={1: 1, 2: 1, 3: 1, 4: 1})
-    assert [c.mentor_id for c in ranked] == [1, 4]
-    assert ranked[0].breakdown["filters"] == {"availability": ["Monday - morning"], "languages": ["English"]}
-    assert ranked[1].breakdown["filters"]["languages"] == ["English"]
+    assert [c.mentor_id for c in ranked] == [1, 3, 4]
+    assert ranked[0].breakdown["filters"] == {"availability": ["Monday - morning"]}
 
 
-def test_blank_language_means_english():
-    mentors = {1: {"languages": ["Spanish"]}, 2: {"languages": ["Spanish", "English"]}, 3: {}}
-    ranked = rank_mentors({}, mentors, open_slots={1: 1, 2: 1, 3: 1})
-    assert [c.mentor_id for c in ranked] == [2, 3]
+def test_shared_second_language_raises_the_score_and_no_match_never_lowers_it():
+    weights = {"industry": 0.5, "languages": 0.5}
+    mentee = {"industry": "Banking", "languages": ["English", "Spanish"]}
+    banker = {"industry": "Accounting"}
+    base, _ = score_pair(mentee, banker, weights)
+    assert base == 0.0
+    for languages in ([], ["English"], ["Korean"], ["English", "Korean"]):  # nothing beyond English shared
+        score, breakdown = score_pair(mentee, {**banker, "languages": languages}, weights)
+        assert score == base and "languages" not in breakdown
+    score, breakdown = score_pair(mentee, {**banker, "languages": ["Spanish"]}, weights)
+    assert score == 50.0 and breakdown["languages"]["shared"] == ["Spanish"]
 
 
 def test_rank_skips_full_mentors_and_orders_by_score():
@@ -139,7 +145,10 @@ def test_assign_still_matches_the_last_pair_when_no_compatible_mentor_is_left(mo
     result = assign({1: {"name": "A", "availability": ["Monday - morning"], "languages": ["Spanish"]}},
                     {10: {"name": "X", "availability": ["Friday - morning"], "languages": ["English"]}})
     assert result[1].mentor_id == 10
-    assert result[1].breakdown["filters_failed"] == ["availability", "languages"]
+    assert result[1].breakdown["filters_failed"] == ["availability"]
+    # Stored honestly: no score for a pair that can't meet; the would-be fit stays in the breakdown.
+    assert result[1].score is None
+    assert result[1].breakdown["fit_if_compatible"] == 10
 
 
 def test_assign_never_uses_a_rejected_pair(monkeypatch):

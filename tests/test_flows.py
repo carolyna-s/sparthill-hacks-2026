@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import (Application, Attendance, AuditLog, Event, Feedback, Match, MatchExclusion, MatchFeedback,
                         MatchOverrideRequest, Meeting, Message, ReminderLog, Submission, User, utcnow)
 from app.reminders import send_due_reminders
+from app.staff import QUEUE_ORDER
 
 from .conftest import login
 
@@ -397,8 +398,7 @@ def test_reject_match_needs_reason_and_is_never_reproposed(client):
 def test_match_review_queue_advances_until_all_proposals_are_done(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
-    ordered = (db.session.query(Match).filter_by(status="proposed")
-               .order_by(Match.score.desc(), Match.id.asc()).all())
+    ordered = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).all()
     first = ordered[0]
     review = client.get(f"/staff/matches/{first.id}?action=approve&queue=1")
     assert b"Exit review queue" in review.data
@@ -419,6 +419,26 @@ def test_match_review_queue_advances_until_all_proposals_are_done(client):
     assert response.location.endswith("/staff/matching")
     assert b"All proposed matches have been reviewed." in client.get(response.location).data
     assert db.session.query(Match).filter_by(status="proposed").count() == 0
+
+
+def test_flagged_proposals_head_the_queue_as_needing_staff_approval(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    scored = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).all()
+    flagged = scored.pop()  # lowest score: flagging it must move it to the front
+    flagged.score_breakdown = {**flagged.score_breakdown, "filters_failed": ["availability"],
+                               "fit_if_compatible": flagged.score}
+    flagged.score = None
+    db.session.commit()
+
+    assert db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).first() == flagged
+    page = client.get("/staff/matching").data
+    assert b"Needs staff approval" in page
+    assert page.index(flagged.mentee.name.encode()) < page.index(scored[0].mentee.name.encode())
+    assert b"Fit if they could meet" in client.get(f"/staff/matches/{flagged.id}").data
+
+    response = client.post(f"/staff/matches/{flagged.id}/approve", data={"queue": "1"})
+    assert response.location.endswith(f"/staff/matches/{scored[0].id}?queue=1")
 
 
 def test_staff_manual_match_override_requires_capacity_and_logs_change(client):
