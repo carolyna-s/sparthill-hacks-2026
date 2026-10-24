@@ -1,4 +1,4 @@
-# Local environment and secrets (App Runner injects env vars)
+# Local environment and secrets (Cloud Run injects env vars)
 .venv
 .env
 .env.*

@@ -22,8 +22,11 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 - languages: a bonus only. Everyone is assumed to get by in English, so sharing another
   language counts 1; sharing none (or only English) leaves it out of the score.
 
-A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
-it doesn't drag every score down. Text and languages are different: a pair with nothing to
+A dimension the mentee left blank (industry, skills, goals, education path) scores 0: no
+answer is no evidence of fit. A mentee who picked "Open to Any" (skills) or "Undecided"
+(goals, education path) gets NEUTRAL_CREDIT instead. Specific picks next to it still count,
+whichever is higher. Alumni when not requested counts as fully covered: unchecked is an
+answer ("no preference"), not a blank. Text and languages are different: a pair with nothing to
 compare (no text embedded, no shared second language) leaves them out entirely, weight
 included, so they can only raise a score.
 
@@ -55,6 +58,10 @@ MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 HARD_FILTERS = ("availability",)
 COVERAGE = ("development_areas", "goals")
 PREFERENCE = ("education_paths",)
+# The mentee-only "no preference" tag per dimension, and the credit it earns (0.3-0.4 of the
+# dimension's weight was asked for).
+NEUTRAL = {"development_areas": OPEN_TO_ANY, "goals": UNDECIDED, "education_paths": UNDECIDED}
+NEUTRAL_CREDIT = 0.35
 
 WEIGHTS = {
     "industry": 0.28,
@@ -167,7 +174,7 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             sim = 1.0
         elif dim == "industry":
             wanted = (mentee.get("industry") or "").strip()
-            sim = industry_similarity(mentee, mentor) if wanted else 1.0
+            sim = industry_similarity(mentee, mentor) if wanted else 0.0
             if not wanted or not sim:
                 shared = []
             elif _same(mentee, mentor, "industry"):
@@ -180,20 +187,18 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             shared = [mentor["school"]] if wanted and _same(mentee, mentor, "school") else []
             sim = (1.0 if shared else 0.0) if wanted else 1.0
         else:
-            wanted = set(mentee.get(dim) or [])
+            picked = set(mentee.get(dim) or [])
+            neutral = NEUTRAL.get(dim) in picked
+            wanted = picked - {NEUTRAL.get(dim)}
             shared = sorted(wanted & set(mentor.get(dim) or []))
             if not wanted:
-                sim = 1.0
-            elif dim == "development_areas" and OPEN_TO_ANY in wanted:
-                shared = sorted(set(mentor.get(dim) or []) - {OPEN_TO_ANY})
-                sim = 1.0
-            elif dim in ("goals", *PREFERENCE) and UNDECIDED in wanted:
-                shared = []
-                sim = 1.0
+                sim = 0.0  # blank, or only the neutral tag (credited below)
             elif dim in PREFERENCE:
                 sim = 1.0 if shared else 0.0
             else:
                 sim = len(shared) / len(wanted)
+            if neutral and sim < NEUTRAL_CREDIT:
+                sim, shared = NEUTRAL_CREDIT, [NEUTRAL[dim]]
         total += w * sim
         used += w
         breakdown[dim] = {"coverage": round(sim, 3), "shared": shared, "weight": w}

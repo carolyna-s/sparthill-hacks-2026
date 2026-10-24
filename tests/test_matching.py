@@ -1,9 +1,9 @@
 from app import matching
-from app.matching import GROUP_CREDIT, INDUSTRY_RANGE, SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
+from app.matching import GROUP_CREDIT, INDUSTRY_RANGE, NEUTRAL_CREDIT, SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
 from app.taxonomy import OPEN_TO_ANY, UNDECIDED
 
 MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
-          "development_areas": ["writing", "technical skills"]}
+          "development_areas": ["writing", "technical skills"], "education_paths": ["graduate degree"]}
 
 
 def test_full_coverage_scores_100():
@@ -19,9 +19,13 @@ def test_partial_coverage_is_weighted():
     assert score == 100 * (0.4 * 0 + 0.3 * 0 + 0.3 * 0.5)
 
 
-def test_empty_mentee_dimension_does_not_penalize():
-    score, _ = score_pair({"industry": "Law Practice"}, {"industry": "Law Practice"})
-    assert score == 100.0
+def test_blank_answers_score_zero():
+    weights = {"industry": 0.25, "development_areas": 0.25, "goals": 0.25, "education_paths": 0.25}
+    score, breakdown = score_pair({"industry": "Law Practice"}, MENTEE | {"industry": "Law Practice"}, weights)
+    assert score == 25.0  # only the industry was answered
+    assert all(breakdown[d]["coverage"] == 0.0 for d in ("development_areas", "goals", "education_paths"))
+    assert score_pair({"industry": "  "}, {"industry": "Law Practice"}, {"industry": 1.0})[0] == 0.0
+    assert score_pair({"goals": []}, {"goals": ["lead a team"]}, {"goals": 1.0})[0] == 0.0
 
 
 def test_industry_matches_ignoring_case_including_typed_values():
@@ -81,30 +85,25 @@ def test_preference_dimensions_need_any_one_match():
     assert score_pair(mentee, {"education_paths": ["graduate degree"]}, weights)[0] == 0.0
 
 
-def test_mentee_any_and_undecided_preferences_are_neutral():
-    score, skills = score_pair(
-        {"development_areas": [OPEN_TO_ANY]},
-        {"development_areas": ["leadership"]},
-        {"development_areas": 1.0},
-    )
-    assert score == 100.0
-    assert skills["development_areas"]["shared"] == ["leadership"]
+def test_open_to_any_and_undecided_earn_partial_credit():
+    for dim, tag in [("development_areas", OPEN_TO_ANY), ("goals", UNDECIDED), ("education_paths", UNDECIDED)]:
+        score, breakdown = score_pair({dim: [tag]}, {dim: ["leadership"]}, {dim: 1.0})
+        assert score == 100 * NEUTRAL_CREDIT
+        assert breakdown[dim] == {"coverage": NEUTRAL_CREDIT, "shared": [tag], "weight": 1.0}
+    # Weighted like any other dimension: 0.35 of goals' weight next to a full industry match.
+    score, _ = score_pair({"industry": "Banking", "goals": [UNDECIDED]}, {"industry": "Banking"},
+                          {"industry": 0.5, "goals": 0.5})
+    assert score == 100 * (0.5 + 0.5 * NEUTRAL_CREDIT)
 
-    score, goals = score_pair(
-        {"goals": [UNDECIDED]},
-        {"goals": ["lead a team"]},
-        {"goals": 1.0},
-    )
-    assert score == 100.0
-    assert goals["goals"]["shared"] == []
 
-    score, education = score_pair(
-        {"education_paths": [UNDECIDED]},
-        {"education_paths": ["graduate degree"]},
-        {"education_paths": 1.0},
-    )
-    assert score == 100.0
-    assert education["education_paths"]["shared"] == []
+def test_specific_picks_next_to_open_to_any_count_when_they_score_higher():
+    weights = {"development_areas": 1.0}
+    mentee = {"development_areas": [OPEN_TO_ANY, "writing", "leadership"]}
+    covered = score_pair(mentee, {"development_areas": ["writing", "leadership"]}, weights)
+    assert covered[0] == 100.0 and covered[1]["development_areas"]["shared"] == ["leadership", "writing"]
+    half = score_pair(mentee, {"development_areas": ["writing"]}, weights)[0]
+    assert half == 50.0  # "Open to Any" isn't an unmet pick
+    assert score_pair(mentee, {"development_areas": ["negotiation"]}, weights)[0] == 100 * NEUTRAL_CREDIT
 
 
 def test_alumni_only_counts_when_requested():

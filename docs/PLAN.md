@@ -131,7 +131,7 @@ Per-feature similarity, each 0–1:
 | Clubs | 1.0 shared club · 0.5 same club category · 0 |
 | Student groups | share of the mentee's opted-in groups the mentor shares |
 
-`S = Σ w_f·sim_f / Σ w_f`. A feature the mentee left blank counts as 1.0. Default weights:
+`S = Σ w_f·sim_f / Σ w_f`. A feature the mentee left blank scores 0 ("Open to Any" / "Undecided": 0.35). Default weights:
 pathway 0.15, interests 0.15, major 0.10, experience 0.10, languages 0.10, clubs 0.10, student
 groups 0.10, goals 0.10, organization 0.05, concentration 0.05.
 
@@ -267,7 +267,7 @@ The same summary (overloaded / at capacity / idle counts) shows on the staff ove
 
 ### 5.5 Automated match emails
 
-On release, sent through SES from editable templates (backend):
+On release, sent by email (Gmail SMTP or SES) from editable templates (backend):
 - **Mentee:** "You've been matched with {mentor}" with headline, why you were matched (top
   features), link to message them, first steps, and the kickoff event.
 - **Mentor:** the same, the other way round.
@@ -368,14 +368,14 @@ points users to the page where they do things themselves.
 ## 9. Architecture
 
 ```
- Browser ──HTTPS──▶ Flask app (AWS App Runner, Docker)
+ Browser ──HTTPS──▶ Flask app (Google Cloud Run, Docker)
                      ├─ Jinja pages + small JS (chat widget, review table)
                      ├─ SQLAlchemy ──────────▶ Supabase Postgres  (all app data)
                      ├─ storage.py ──────────▶ Supabase Storage   (resumes, submissions)
                      ├─ Claude API ──────────▶ AI match review, feedback digest,
                      │                         resume extraction, chatbot
-                     └─ notify.py ───────────▶ Amazon SES         (match + reminder email)
- EventBridge Scheduler ──▶ POST /internal/cron/{reminders, cohort-tick}
+                     └─ notify.py ───────────▶ Gmail SMTP / SES   (match + reminder email)
+ Cloud Scheduler ──▶ POST /internal/cron/{reminders, cohort-tick}
 ```
 
 | Layer | Choice |
@@ -386,7 +386,7 @@ points users to the page where they do things themselves.
 | Files | Supabase Storage, private bucket, signed URLs |
 | Auth | Flask-Login with 4 roles. Supabase Auth is optional later |
 | LLM | Claude API (`anthropic` SDK), structured outputs + tool use |
-| Hosting / email / cron | AWS App Runner, SES, EventBridge Scheduler |
+| Hosting / email / cron | Google Cloud Run (`us-east4`), Gmail SMTP (SES optional), Cloud Scheduler |
 
 **Cohort automation** runs as one idempotent `cohort-tick` job (hourly). It checks each
 cohort's dates and does whatever is due: close sign-up and auto-match, remind staff before the
@@ -427,7 +427,7 @@ The app code still matches on the original tags (`career_interests`, `goals`,
 | M4 | Automation | Cohort dates, `cohort-tick` job, auto-accept, release + match emails, mentee confirm/withdraw | A cohort with shortened dates runs end to end without clicks except approve/deny and confirm |
 | M5 | AI layer | Stage 4 context scaling with feedback retrieval, config suggestions, resume/LinkedIn-PDF extraction | A deny visibly lowers similar pairs in the next re-match; resume pre-fills the form |
 | M6 | Resources + assistant | Resources tab, chatbot with tools | Scripted questions per role answered with correct links |
-| M7 | AWS deploy + polish | App Runner, SES, schedulers, report charts, demo script | Public URL; demo rehearsed |
+| M7 | Deploy + polish | Cloud Run, email, scheduler, report charts, demo script | Public URL; demo rehearsed |
 
 After M1, M2 and M6 can run in parallel. M3 builds on M2. M4 and M5 can run in parallel after M3.
 
