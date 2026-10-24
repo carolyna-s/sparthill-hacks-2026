@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import program
+from . import embeddings, program
 from .extensions import csrf, db
 from .intake import Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields, signup_next_step
 from .models import Event, Match, MatchExclusion, MatchFeedback, Meeting, Submission, User, utcnow
@@ -268,6 +268,7 @@ def update_application():
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
                                taxonomy=TAXONOMY, DAYS=DAYS, PERIODS=PERIODS, editing=True)
 
+    embeddings.refresh(profile)  # text answers and industry may have changed
     db.session.commit()
     flash("Application changes saved.", "ok")
     return redirect(url_for("main.update_application"))

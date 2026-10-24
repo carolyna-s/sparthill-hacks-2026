@@ -1,5 +1,5 @@
 from app import matching
-from app.matching import SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
+from app.matching import GROUP_CREDIT, INDUSTRY_RANGE, SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
 
 MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
           "development_areas": ["writing", "technical skills"]}
@@ -27,6 +27,50 @@ def test_industry_matches_ignoring_case_including_typed_values():
     weights = {"industry": 1.0}
     assert score_pair({"industry": "marine robotics"}, {"industry": "Marine Robotics "}, weights)[0] == 100.0
     assert score_pair({"industry": "Marine Robotics"}, {"industry": "Banking"}, weights)[0] == 0.0
+
+
+def _unit(cos: float) -> list[float]:
+    """A 2-d vector whose cosine with [1, 0] is `cos`."""
+    return [cos, (1 - cos ** 2) ** 0.5]
+
+
+def test_related_industries_get_partial_credit_from_their_embeddings():
+    weights = {"industry": 1.0}
+    lo, hi = INDUSTRY_RANGE
+    mentee = {"industry": "Banking", "text_vectors": {"industry": [1.0, 0.0]}}
+    related = {"industry": "Fintech", "text_vectors": {"industry": _unit((lo + hi) / 2)}}  # typed: no sector
+    score, breakdown = score_pair(mentee, related, weights)
+    assert score == 50.0
+    assert breakdown["industry"]["shared"] == ["related: Fintech 50%"]
+    unrelated = {"industry": "Farming", "text_vectors": {"industry": _unit(lo - 0.1)}}
+    assert score_pair(mentee, unrelated, weights) == (0.0, {"industry": {"coverage": 0.0, "shared": [], "weight": 1.0}})
+    # Close enough to max out is still labeled as related, not as the same industry.
+    near = {"industry": "Investment Banking", "text_vectors": {"industry": _unit(hi)}}
+    assert score_pair(mentee, near, weights)[1]["industry"]["shared"] == ["related (Finance): Investment Banking 100%"]
+    # Exact names score 1 without vectors (not embedded yet, or no API key).
+    assert score_pair({"industry": "Banking"}, {"industry": "banking"}, weights)[0] == 100.0
+
+
+def test_same_sector_gets_group_credit_unless_the_embedding_is_closer():
+    weights = {"industry": 1.0}
+    lo, hi = INDUSTRY_RANGE
+    mentee = {"industry": "Software Development", "text_vectors": {"industry": [1.0, 0.0]}}
+    ai = {"industry": "Artificial Intelligence", "text_vectors": {"industry": _unit(lo)}}  # embedding gives 0
+    score, breakdown = score_pair(mentee, ai, weights)
+    assert score == 100 * GROUP_CREDIT
+    assert breakdown["industry"]["shared"] == ["related (Software and IT): Artificial Intelligence 60%"]
+    assert score_pair({"industry": "software development"}, {"industry": "Artificial Intelligence"}, weights)[0] == 60.0
+    close = {**ai, "text_vectors": {"industry": _unit(hi)}}
+    assert score_pair(mentee, close, weights)[0] == 100.0
+    # Different sectors, typed industries outside the list: embedding only.
+    assert score_pair({"industry": "Software Development"}, {"industry": "Farming"}, weights)[0] == 0.0
+    assert score_pair({"industry": "Marine Robotics"}, {"industry": "Robotics Engineering"}, weights)[0] == 0.0
+
+
+def test_every_suggested_industry_has_a_sector():
+    from app.taxonomy import INDUSTRIES, INDUSTRY_GROUPS
+    grouped = {i for members in INDUSTRY_GROUPS.values() for i in members}
+    assert grouped == set(INDUSTRIES)
 
 
 def test_preference_dimensions_need_any_one_match():
@@ -60,7 +104,7 @@ def test_hard_filter_drops_pairs_without_a_shared_time_slot_only():
 def test_shared_second_language_raises_the_score_and_no_match_never_lowers_it():
     weights = {"industry": 0.5, "languages": 0.5}
     mentee = {"industry": "Banking", "languages": ["English", "Spanish"]}
-    banker = {"industry": "Accounting"}
+    banker = {"industry": "Farming"}  # another sector: no industry credit
     base, _ = score_pair(mentee, banker, weights)
     assert base == 0.0
     for languages in ([], ["English"], ["Korean"], ["English", "Korean"]):  # nothing beyond English shared
