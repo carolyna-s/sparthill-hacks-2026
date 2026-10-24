@@ -104,7 +104,7 @@ app/
   taxonomy.py     dropdown/tag vocabularies used by profiles and matching
   auth.py         register / login / logout, role_required
   intake.py       profiles, applications, digital agreements
-  matching.py     scoring, ranking, capacity-aware assignment
+  matching.py     scoring, ranking, one-to-one assignment
   program.py      events, prework/postwork, check-ins, messaging, feedback
   reminders.py    idempotent reminder sweep
   staff.py        applicant review, match approval, events, reports

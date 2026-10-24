@@ -79,8 +79,10 @@ def test_assign_respects_capacity():
 
 def test_propose_all_on_seed_data(app):
     created = matching.propose_all()
-    # 4 accepted mentees, 6 mentor slots: everyone gets a proposal, no one twice
+    # 4 accepted mentees, 4 accepted mentors, one-to-one: everyone gets a proposal, no one twice
     assert len(created) == 4
     assert len({m.mentee_id for m in created}) == 4
+    assert len({m.mentor_id for m in created}) == 4
+    assert all(n == 0 for n in matching.open_slots().values())
     assert matching.unmatched_mentee_ids() == set()
     assert matching.propose_all() == []

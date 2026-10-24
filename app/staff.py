@@ -6,7 +6,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
 from sqlalchemy import func
 
@@ -21,14 +21,13 @@ bp = Blueprint("staff", __name__, url_prefix="/staff")
 
 # Labels for MatchFeedback.REASONS["deny"], in the order staff see them.
 DENY_REASONS = {
-    "gut_feeling": "Gut feeling: it just doesn't feel right",
     "interests_or_pathway": "Different interests or pathway",
     "experience_gap": "Experience gap is wrong",
     "language_or_communication": "Language or communication",
     "fit_concern": "Personality or fit concern",
     "mentor_overloaded": "Mentor is overloaded",
     "conflict_of_interest": "Conflict of interest",
-    "other": "Something else",
+    "other": "Other",
 }
 
 
@@ -79,15 +78,35 @@ def application(app_id: int):
     a = db.get_or_404(Application, app_id)
     if request.method == "POST":
         decision = request.form.get("decision")
-        if decision not in ("accepted", "waitlisted", "rejected"):
+        if decision not in ("accepted", "rejected"):
             abort(400)
+        before = a.status
         a.status, a.reviewed_by_id, a.reviewed_at = decision, current_user.id, utcnow()
         a.staff_notes = request.form.get("staff_notes", "")
         db.session.commit()
-        flash(f"{a.user.name}: {decision}.", "ok")
-        return redirect(url_for("staff.applications"))
+        _offer_undo(f"{a.user.name}: {decision}.", url_for("staff.undo_application", app_id=a.id),
+                    status=before)
+        return redirect(url_for("staff.applications", status=before))
     return render_template("staff/application.html", a=a,
                            Personality_Questions_Data=Personality_Questions_Data[a.user.role])
+
+
+@bp.post("/applications/<int:app_id>/undo")
+def undo_application(app_id: int):
+    """Put an application back to the status it had before the last decision."""
+    a = db.get_or_404(Application, app_id)
+    status = request.form.get("status")
+    if status not in ("draft", "submitted", "accepted", "rejected"):
+        abort(400)
+    if status != "accepted" and a.status == "accepted" and db.session.query(Match).filter(
+            (Match.mentee_id == a.user_id) | (Match.mentor_id == a.user_id),
+            Match.status.in_(("proposed", "approved"))).first():
+        flash(f"{a.user.name} is already in a match. Cancel or end it before undoing the acceptance.", "error")
+    else:
+        a.status = status
+        db.session.commit()
+        flash(f"Undone: {a.user.name} is {status} again.", "ok")
+    return redirect(url_for("staff.application", app_id=a.id))
 
 
 # --- participant dashboards --------------------------------------------------------
@@ -129,6 +148,17 @@ def person(user_id: int):
 
 # --- matching ----------------------------------------------------------------------
 
+def _back(default: str) -> str:
+    """Where to go after an action: the page it was taken from, if that's a page of ours."""
+    target = request.form.get("next", "")
+    return target if target.startswith("/") and not target.startswith("//") else default
+
+
+def _offer_undo(text: str, action: str, **fields) -> None:
+    """Show `text` on the next page with an Undo button that POSTs `fields` to `action`."""
+    session["undo"] = {"text": text, "action": action, "fields": fields}
+
+
 @bp.get("/matching")
 def matching_page():
     unmatched = (db.session.query(User).filter(User.id.in_(matching.unmatched_mentee_ids()))
@@ -139,23 +169,51 @@ def matching_page():
     approved = db.session.query(Match).filter_by(status="approved").order_by(Match.decided_at.desc()).all()
     rejected = (db.session.query(MatchFeedback).filter_by(kind="deny")
                 .order_by(MatchFeedback.created_at.desc()).limit(20).all())
+    messaged = {mid for (mid,) in db.session.query(Message.match_id).distinct()}
     return render_template("staff/matching.html", unmatched=unmatched, rankings=rankings, mentors=mentors,
                            proposed=proposed, approved=approved, rejected=rejected,
-                           slots=matching.open_slots())
+                           messaged=messaged)
 
 
 @bp.get("/matches/<int:match_id>")
 def match_review(match_id: int):
+    """The full overview of a pair. ?action=approve or ?action=reject turns it into that
+    decision's confirmation step."""
     m = db.get_or_404(Match, match_id)
-    return render_template("staff/match.html", m=m, slots=matching.open_slots(),
+    action = request.args.get("action") if m.status == "proposed" else None
+    mentees_of_mentor = (db.session.query(Match)
+                         .filter(Match.mentor_id == m.mentor_id, Match.id != m.id,
+                                 Match.status.in_(("proposed", "approved"))).all())
+    return render_template("staff/match.html", m=m,
+                           action=action if action in ("approve", "reject") else None,
+                           questions=Personality_Questions_Data, mentees_of_mentor=mentees_of_mentor,
                            denials=denials_for([m.id]).get(m.id, []))
 
 
 @bp.post("/matching/propose-all")
 def propose_all():
     created = matching.propose_all()
-    flash(f"Proposed {len(created)} matches.", "ok")
+    if created:
+        _offer_undo(f"Proposed {len(created)} matches.", url_for("staff.cancel_proposals"),
+                    ids=[m.id for m in created])
+    else:
+        flash("Nothing to propose: every accepted mentee already has a match or no mentor fits.", "ok")
     return redirect(url_for("staff.matching_page"))
+
+
+@bp.post("/matching/cancel")
+def cancel_proposals():
+    """Undo proposals: delete them so the mentees are unmatched again."""
+    q = db.session.query(Match).filter_by(status="proposed")
+    if not request.form.get("all"):
+        q = q.filter(Match.id.in_(request.form.getlist("ids", type=int)))
+    cancelled = 0
+    for m in q.all():
+        db.session.delete(m)
+        cancelled += 1
+    db.session.commit()
+    flash(f"Cancelled {cancelled} proposal(s).", "ok")
+    return redirect(_back(url_for("staff.matching_page")))
 
 
 @bp.post("/matching/propose")
@@ -165,26 +223,70 @@ def propose_one():
         abort(409)
     choice = next((c for c in matching.ranking_for(mentee_id, limit=None) if c.mentor_id == mentor_id), None)
     if choice is None:
-        abort(409)  # mentor not accepted or at capacity
-    db.session.add(Match(mentee_id=mentee_id, mentor_id=mentor_id, score=choice.score,
-                         score_breakdown=choice.breakdown))
+        abort(409)  # mentor not accepted or already matched
+    m = Match(mentee_id=mentee_id, mentor_id=mentor_id, score=choice.score, score_breakdown=choice.breakdown)
+    db.session.add(m)
     db.session.commit()
+    _offer_undo(f"Added {m.mentee.name} → {m.mentor.name} to the proposals. Approve or reject it above.",
+                url_for("staff.cancel_proposals"), ids=[m.id])
     return redirect(url_for("staff.matching_page"))
+
+
+# decision: (status it applies to, status it leads to). The last three undo the first three.
+DECISIONS = {"approve": ("proposed", "approved"), "reject": ("proposed", "rejected"),
+             "end": ("approved", "ended"),
+             "unapprove": ("approved", "proposed"), "unreject": ("rejected", "proposed"),
+             "reopen": ("ended", "approved")}
+UNDO = {"approve": "unapprove", "reject": "unreject", "end": "reopen"}
+
+
+def _undo_blocker(m: Match, decision: str) -> str | None:
+    """Why this undo can't happen right now, if it can't."""
+    if decision == "unapprove" and db.session.query(Message).filter_by(match_id=m.id).first():
+        return "They've already started messaging, so the approval can't be undone. End the match instead."
+    if decision in ("unreject", "reopen"):
+        other = (db.session.query(Match)
+                 .filter(Match.mentee_id == m.mentee_id, Match.id != m.id,
+                         Match.status.in_(("proposed", "approved"))).first())
+        if other:
+            return (f"{m.mentee.name} already has another match ({other.mentor.name}, {other.status}). "
+                    "Cancel or end that one first.")
+        if matching.open_slots().get(m.mentor_id, 0) <= 0:
+            return f"{m.mentor.name} already has a mentee (mentorship is one-to-one)."
+    return None
 
 
 @bp.post("/matches/<int:match_id>/<decision>")
 def decide_match(match_id: int, decision: str):
     m = db.get_or_404(Match, match_id)
-    allowed = {"approve": ("proposed", "approved"), "reject": ("proposed", "rejected"),
-               "end": ("approved", "ended")}
-    if decision not in allowed or m.status != allowed[decision][0]:
+    if decision not in DECISIONS:
         abort(400)
+    back = _back(url_for("staff.matching_page"))
+    if m.status != DECISIONS[decision][0]:
+        flash(f"This match is already {m.status}, so that can't be done anymore.", "error")
+        return redirect(back)
+    blocker = _undo_blocker(m, decision)
+    if blocker:
+        flash(blocker, "error")
+        return redirect(back)
+    pair = f"{m.mentee.name} → {m.mentor.name}"
+    if decision in ("unapprove", "unreject"):
+        if decision == "unreject":
+            # The rejection is taken back, so it shouldn't teach the matching anything or block the pair.
+            denials = db.session.query(MatchFeedback).filter_by(match_id=m.id, kind="deny")
+            ids = [f.id for f in denials]
+            db.session.query(MatchExclusion).filter(MatchExclusion.feedback_id.in_(ids)).delete()
+            denials.delete()
+        m.status, m.decided_by_id, m.decided_at = "proposed", None, None
+        db.session.commit()
+        flash(f"Undone: {pair} is back in the proposals.", "ok")
+        return redirect(back)
     if decision == "reject":
-        # A rejection needs a reason and an explanation: the matching loop learns from them.
+        # A rejection needs a reason (the matching loop learns from it); "other" needs it written out.
         reason, comment = request.form.get("reason"), request.form.get("comment", "").strip()
-        if reason not in MatchFeedback.REASONS["deny"] or not comment:
-            flash("To reject a match, pick a reason and explain why.", "error")
-            return redirect(url_for("staff.match_review", match_id=m.id))
+        if reason not in MatchFeedback.REASONS["deny"] or (reason == "other" and not comment):
+            flash("To reject a match, pick a reason" + (" and describe it." if reason == "other" else "."), "error")
+            return redirect(url_for("staff.match_review", match_id=m.id, action="reject"))
         feedback = MatchFeedback(match_id=m.id, author_id=current_user.id, kind="deny",
                                  reason=reason, comment=comment)
         db.session.add(feedback)
@@ -192,10 +294,16 @@ def decide_match(match_id: int, decision: str):
         if (m.mentee_id, m.mentor_id) not in matching.excluded_pairs():
             db.session.add(MatchExclusion(mentee_id=m.mentee_id, mentor_id=m.mentor_id,
                                           cohort_id=m.cohort_id, feedback_id=feedback.id))
-        flash(f"Rejected {m.mentee.name} → {m.mentor.name}. They won't be proposed together again.", "ok")
-    m.status, m.decided_by_id, m.decided_at = allowed[decision][1], current_user.id, utcnow()
+    m.status, m.decided_by_id, m.decided_at = DECISIONS[decision][1], current_user.id, utcnow()
     db.session.commit()
-    return redirect(url_for("staff.matching_page"))
+    done = {"approve": f"Approved {pair}.", "end": f"Ended {pair}.",
+            "reject": f"Rejected {pair}. They won't be proposed together again.",
+            "reopen": f"Reopened {pair}."}[decision]
+    if decision in UNDO:
+        _offer_undo(done, url_for("staff.decide_match", match_id=m.id, decision=UNDO[decision]), next=back)
+    else:
+        flash(done, "ok")
+    return redirect(back)
 
 
 # --- events ----------------------------------------------------------------------

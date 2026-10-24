@@ -1,22 +1,29 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, tags %}
-{% from "staff/_match.html" import why, denial with context %}
+{% from "staff/_match.html" import why, denial, post with context %}
 {% block content %}
-<div class="flex justify-between items-center mb-5">
+<div class="flex flex-wrap gap-2 justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Matching</h1>
-  <form method="post" action="{{ url_for('staff.propose_all') }}">{{ csrf() }}{{ btn("Auto-propose for all unmatched") }}</form>
+  <div class="flex gap-2">
+    {% if proposed %}{{ post(url_for('staff.cancel_proposals'), "Cancel all proposals",
+        confirm="Cancel every proposal? The mentees go back to unmatched.", fields={'all': 1}) }}{% endif %}
+    <form method="post" action="{{ url_for('staff.propose_all') }}">{{ csrf() }}{{ btn("Auto-propose for all unmatched") }}</form>
+  </div>
 </div>
 
 {% call card("Proposed — awaiting approval (" ~ proposed|length ~ ")") %}
 <table class="w-full text-sm">
   {% for m in proposed %}
   <tr class="border-t align-top">
-    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a></td>
+    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a>
+      {% if m.rematch_round > 1 %}<div class="text-xs text-slate-500">re-match #{{ m.rematch_round }}</div>{% endif %}</td>
     <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
     <td class="py-2">{{ why(m.score_breakdown) }}</td>
     <td class="py-2 text-right whitespace-nowrap">
-      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='approve') }}" class="inline">{{ csrf() }}{{ btn("Approve") }}</form>
-      <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="inline-block text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="inline-block text-sm text-indigo-600 mr-1">More info</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve') }}" class="inline-block text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject') }}" class="inline-block text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
+      {{ post(url_for('staff.cancel_proposals'), "Cancel", fields={'ids': m.id}) }}
     </td>
   </tr>
   {% else %}<tr><td class="text-slate-500">Nothing proposed.</td></tr>{% endfor %}
@@ -24,6 +31,8 @@
 {% endcall %}
 
 {% call card("Unmatched accepted mentees (" ~ unmatched|length ~ ")") %}
+<p class="text-xs text-slate-500 mb-2">Best mentors for each mentee. Add a pair to move it up to the proposals above, where
+  you approve or reject it.</p>
 {% for u in unmatched %}
   <div class="border-t py-3">
     <p class="font-medium text-sm mb-1">{{ u.name }}</p>
@@ -31,16 +40,16 @@
     <table class="w-full text-sm">
       {% for c in rankings[u.id] %}
       <tr class="align-top">
-        <td class="py-1 w-48">{{ mentors[c.mentor_id].name }} <span class="text-xs text-slate-500">({{ slots[c.mentor_id] }} open)</span></td>
+        <td class="py-1 w-48">{{ mentors[c.mentor_id].name }}</td>
         <td class="py-1 w-16 font-semibold">{{ c.score }}</td>
         <td class="py-1">{{ why(c.breakdown) }}</td>
         <td class="py-1 text-right">
           <form method="post" action="{{ url_for('staff.propose_one') }}">{{ csrf() }}
             <input type="hidden" name="mentee_id" value="{{ u.id }}"><input type="hidden" name="mentor_id" value="{{ c.mentor_id }}">
-            {{ btn("Propose", "secondary") }}</form>
+            {{ btn("Add to proposals", "secondary") }}</form>
         </td>
       </tr>
-      {% else %}<tr><td class="text-slate-500">No mentors with open capacity.</td></tr>{% endfor %}
+      {% else %}<tr><td class="text-slate-500">No free mentor fits (every compatible mentor already has a mentee).</td></tr>{% endfor %}
     </table>
   </div>
 {% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}
@@ -50,9 +59,10 @@
 <table class="w-full text-sm">
   {% for m in approved %}
   <tr class="border-t">
-    <td class="py-2">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</td><td>{{ m.score }}</td>
-    <td class="text-right"><a class="text-indigo-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
-      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='end') }}" class="inline">{{ csrf() }}{{ btn("End", "secondary") }}</form></td>
+    <td class="py-2"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</a></td><td>{{ m.score }}</td>
+    <td class="text-right whitespace-nowrap"><a class="text-indigo-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
+      {% if m.id not in messaged %}{{ post(url_for('staff.decide_match', match_id=m.id, decision='unapprove'), "Undo approval") }}{% endif %}
+      {{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End") }}</td>
   </tr>
   {% else %}<tr><td class="text-slate-500">None yet.</td></tr>{% endfor %}
 </table>
@@ -61,7 +71,10 @@
 {% call card("Recently rejected (" ~ rejected|length ~ ")") %}
 {% for f in rejected %}
   <div class="border-t first:border-t-0 py-3">
-    <a class="text-sm font-medium hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=f.match_id) }}">{{ f.match.mentee.name }} → {{ f.match.mentor.name }}</a>
+    <div class="flex justify-between items-start gap-3">
+      <a class="text-sm font-medium hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=f.match_id) }}">{{ f.match.mentee.name }} → {{ f.match.mentor.name }}</a>
+      {% if f.match.status == 'rejected' %}{{ post(url_for('staff.decide_match', match_id=f.match_id, decision='unreject'), "Undo rejection") }}{% endif %}
+    </div>
     <div class="mt-1">{{ denial(f) }}</div>
   </div>
 {% else %}<p class="text-sm text-slate-500">No rejections yet.</p>{% endfor %}

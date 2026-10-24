@@ -65,7 +65,7 @@ go with them.
 | File | Purpose |
 | --- | --- |
 | `models.py` | Every database table as a SQLAlchemy model ([SCHEMA.md](SCHEMA.md) describes each one) |
-| `matching.py` | The matching engine: scores and ranks mentors for each mentee and assigns pairs while respecting mentor capacity. The scoring functions take plain dicts, so you can test them without a database |
+| `matching.py` | The matching engine: scores and ranks mentors for each mentee and assigns pairs one-to-one (each mentor gets at most one mentee). The scoring functions take plain dicts, so you can test them without a database |
 | `taxonomy.py` | Fixed tag lists (career interests, goals, development areas) shared by the profile forms and the matching engine |
 | `reminders.py` | Finds reminders that are due and sends them. Each reminder is logged so it's never sent twice, which makes it safe to run repeatedly |
 

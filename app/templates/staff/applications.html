@@ -3,7 +3,7 @@
 {% block content %}
 <h1 class="text-2xl font-semibold mb-3">Applicants</h1>
 <div class="flex gap-2 text-sm mb-5">
-  {% for s in ['submitted', 'accepted', 'waitlisted', 'rejected'] %}
+  {% for s in ['submitted', 'accepted', 'rejected'] %}
     <a href="{{ url_for('staff.applications', status=s, role=role) }}" class="px-3 py-1 rounded {{ 'bg-indigo-600 text-white' if s == status else 'border bg-white' }}">{{ s }}</a>
   {% endfor %}
   <span class="mx-2 text-slate-300">|</span>

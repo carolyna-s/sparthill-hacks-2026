@@ -35,7 +35,7 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `organizations` | mentee: target orgs; mentor: current/past employers |
 | `clubs_prior`, `clubs_current` | lists |
 | `student_groups`, `groups_opt_in` | sensitive; only used for matching if opted in; never shown to the other party |
-| `capacity` | mentors: max concurrent mentees |
+| `capacity` | unused: mentorship is one-to-one (`matching.MENTEES_PER_MENTOR`) |
 | `linkedin_url`, `resume_key`, `resume_file_name` | uploaded resume / LinkedIn PDF in storage |
 | `linkedin_data` | JSON parsed from the LinkedIn PDF (`app/linkedin.py`): headline, organization, school, industry, summary, years_experience, experience, education, activities, skills, suggested `tags`, and `source` (`llm` or `keywords`). Only suggestions: the form columns above hold what the user confirmed. Kept for matching |
 | `embedding`, `embedding_model` | `vector(384)` of all soft answers combined |
@@ -46,8 +46,8 @@ mean *what I want*; for mentors, *what I have/offer*.
 (`signup` → `matching` → `review` → `released` → `closed`), `signup_opens`, `signup_closes`,
 `review_deadline`, `confirm_days` (default 7), `matched_at`, `released_at`.
 
-**application**: one per user. `status` (`draft` → `submitted` → `accepted` | `waitlisted` |
-`rejected`; `withdrawn` if a mentee leaves after matching), `answers` (JSON), `submitted_at`,
+**application**: one per user. `status` (`draft` → `submitted` → `accepted` | `rejected`;
+`withdrawn` if a mentee leaves after matching), `answers` (JSON), `submitted_at`,
 `reviewed_by_id`, `reviewed_at`, `staff_notes`.
 
 **agreement**: versioned agreement text. `title`, `version`, `body`, `audience` (`mentee` |
@@ -71,15 +71,14 @@ embedded), `embedding_model`, `updated_at`.
 | Column | Notes |
 | --- | --- |
 | `mentee_id`, `mentor_id`, `cohort_id` | |
-| `status` | `proposed` → `approved` \| `rejected` (staff deny); `approved` → `withdrawn` \| `ended` |
+| `status` | `proposed` → `approved` \| `rejected` (staff deny); `approved` → `withdrawn` \| `ended`. Staff can undo approve / reject / end; cancelling a proposal deletes the row |
 | `score` | final 0–100 shown to staff |
 | `structured_score`, `semantic_score`, `context_multiplier` | stage 2, stage 3, stage 4 (docs/PLAN.md §4) |
 | `score_breakdown` | per-feature similarities and shared values |
 | `ai_review` | `{note, flags, confidence, feedback_ids_used}` |
 | `config_id` | the `matching_config` used |
 | `rematch_round` | 1 for the first proposal, +1 for each auto re-match after a deny |
-| `proposed_at`, `decided_by_id`, `decided_at` | staff decision |
-| `released_at`, `confirm_by`, `mentee_confirmed_at`, `withdrawn_at` | post-release confirmation |
+| `proposed_at`, `decided_by_id`, `decided_at` | staff decision || `released_at`, `confirm_by`, `mentee_confirmed_at`, `withdrawn_at` | post-release confirmation |
 
 **matching_config**: versioned weights. `weights` (`{feature: weight}`), `settings`
 (`alpha`, `experience_gap`, `load_penalty`, `context_range`, `llm_top_k`), `is_active` (one

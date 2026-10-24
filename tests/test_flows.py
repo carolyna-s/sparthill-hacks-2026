@@ -91,10 +91,8 @@ def test_required_fields_block_next(client):
 
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
     assert resp.headers["Location"].endswith("/profile/2")  # language is required too
-    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"],
-                                           "capacity": "3"})
+    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"]})
     assert resp.headers["Location"].endswith("/profile/3")
-    assert user.profile.capacity == 3
     client.post("/profile/3", data={})
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
@@ -119,7 +117,8 @@ def test_review_match_and_message(client):
 
     client.post("/staff/matching/propose-all")
     proposed = db.session.query(Match).filter_by(status="proposed").all()
-    assert len(proposed) == 5
+    assert len(proposed) == 4  # 5 accepted mentees, 4 mentors, one mentee each
+    assert len({m.mentor_id for m in proposed}) == 4
     for m in proposed:
         client.post(f"/staff/matches/{m.id}/approve")
     match = proposed[0]
@@ -139,24 +138,85 @@ def test_review_match_and_message(client):
 def test_reject_match_needs_reason_and_is_never_reproposed(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
-    m = db.session.query(Match).filter_by(status="proposed").first()
-    assert client.get(f"/staff/matches/{m.id}").status_code == 200
+    m, m2 = db.session.query(Match).filter_by(status="proposed").limit(2).all()
+    overview = client.get(f"/staff/matches/{m.id}").data
+    assert b"Approve\xe2\x80\xa6" in overview and b"Reject\xe2\x80\xa6" in overview  # "More info": both options
+    reject_page = client.get(f"/staff/matches/{m.id}?action=reject").data
+    assert b"Reject match" in reject_page and b"Confirm approval" not in reject_page
+    assert b"Cancel proposal" not in reject_page and b"Gut feeling" not in reject_page
+    approve_page = client.get(f"/staff/matches/{m.id}?action=approve").data
+    assert b"Confirm approval" in approve_page and b"Reject match" not in approve_page
 
-    client.post(f"/staff/matches/{m.id}/reject")  # no reason or explanation
-    client.post(f"/staff/matches/{m.id}/reject", data={"reason": "gut_feeling", "comment": "  "})
+    client.post(f"/staff/matches/{m.id}/reject")  # no reason
+    client.post(f"/staff/matches/{m.id}/reject", data={"reason": "gut_feeling"})  # no longer an option
+    client.post(f"/staff/matches/{m.id}/reject", data={"reason": "other", "comment": "  "})  # other needs text
     assert m.status == "proposed" and db.session.query(MatchFeedback).count() == 0
 
     client.post(f"/staff/matches/{m.id}/reject",
-                data={"reason": "gut_feeling", "comment": "Their goals don't line up, I just sense it."})
+                data={"reason": "other", "comment": "Their goals don't line up."})
     assert m.status == "rejected"
     f = db.session.query(MatchFeedback).one()
-    assert (f.kind, f.reason, f.comment) == ("deny", "gut_feeling", "Their goals don't line up, I just sense it.")
+    assert (f.kind, f.reason, f.comment) == ("deny", "other", "Their goals don't line up.")
     assert db.session.query(MatchExclusion).filter_by(mentee_id=m.mentee_id, mentor_id=m.mentor_id).count() == 1
+    client.post(f"/staff/matches/{m2.id}/reject", data={"reason": "experience_gap"})  # listed reasons need no text
+    assert m2.status == "rejected"
 
     client.post("/staff/matching/propose-all")
     assert db.session.query(Match).filter_by(mentee_id=m.mentee_id, mentor_id=m.mentor_id).count() == 1
-    assert b"I just sense it" in client.get("/staff/matching").data
-    assert b"I just sense it" in client.get(f"/staff/people/{m.mentee_id}").data
+    assert b"goals don&#39;t line up" in client.get("/staff/matching").data
+    assert b"goals don&#39;t line up" in client.get(f"/staff/people/{m.mentee_id}").data
+
+
+def test_undo_auto_propose_and_cancel(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    proposed = db.session.query(Match).filter_by(status="proposed").all()
+    banner = f"Proposed {len(proposed)} matches.".encode()
+    assert banner in client.get("/staff/matching").data
+    assert banner not in client.get("/staff/matching").data  # the undo offer shows once
+
+    client.post("/staff/matching/cancel", data={"ids": [m.id for m in proposed[:2]]})
+    assert db.session.query(Match).count() == len(proposed) - 2
+    client.post("/staff/matching/cancel", data={"all": 1})
+    assert db.session.query(Match).count() == 0
+
+
+def test_undo_approve_reject_and_end(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    a, b = db.session.query(Match).filter_by(status="proposed").limit(2).all()
+
+    client.post(f"/staff/matches/{a.id}/approve")
+    client.post(f"/staff/matches/{a.id}/unapprove")
+    assert a.status == "proposed" and a.decided_at is None
+
+    client.post(f"/staff/matches/{b.id}/reject", data={"reason": "fit_concern", "comment": "Mismatch."})
+    client.post(f"/staff/matches/{b.id}/unreject")
+    assert b.status == "proposed"
+    assert db.session.query(MatchFeedback).count() == 0 and db.session.query(MatchExclusion).count() == 0
+
+    client.post(f"/staff/matches/{a.id}/approve")
+    client.post(f"/staff/matches/{a.id}/end")
+    client.post(f"/staff/matches/{a.id}/reopen")
+    assert a.status == "approved"
+    client.post(f"/staff/matches/{a.id}/reopen")  # already approved: refused, nothing breaks
+    assert a.status == "approved"
+
+    login(client, a.mentee.email)
+    client.post(f"/messages/{a.id}", data={"body": "Hi!"})
+    login(client, "staff.admin@example.org")
+    client.post(f"/staff/matches/{a.id}/unapprove")
+    assert a.status == "approved"  # they've started talking, so End is the way out
+
+
+def test_undo_application_decision(client):
+    login(client, "staff.admin@example.org")
+    pending = db.session.query(Application).filter_by(status="submitted").one()
+    client.post(f"/staff/applications/{pending.id}", data={"decision": "rejected"})
+    assert pending.status == "rejected"
+    assert b"Undo" in client.get("/staff/applications").data
+    client.post(f"/staff/applications/{pending.id}/undo", data={"status": "submitted"})
+    assert pending.status == "submitted"
 
 
 def test_staff_people_dashboards(client):

@@ -1,4 +1,13 @@
-{% from "_macros.html" import tags %}
+{% from "_macros.html" import csrf, btn, tags %}
+
+{# A one-button POST form that comes back to the current page afterwards. #}
+{% macro post(url, label, kind='secondary', confirm=None, fields={}, next=None) %}
+<form method="post" action="{{ url }}" class="inline"{% if confirm %} onsubmit='return confirm({{ confirm|tojson }})'{% endif %}>
+  {{ csrf() }}<input type="hidden" name="next" value="{{ next or request.full_path.rstrip('?') }}">
+  {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  {{ btn(label, kind) }}
+</form>
+{% endmacro %}
 
 {# Why a pair scored what it did: shared hard filters, then per-dimension coverage. #}
 {% macro why(breakdown) %}
@@ -11,9 +20,18 @@
   {% endfor %}
 {% endmacro %}
 
-{% macro profile_facts(u) %}
+{# questions: Personality_Questions_Data, to also show the person's application answers. #}
+{% macro profile_facts(u, questions=None) %}
 {% set p = u.profile %}
 <p class="text-sm text-slate-500 mb-3">{{ p.headline or '—' }}{{ (' · ' ~ p.organization) if p.organization }}</p>
+{% if questions %}
+  {% if p.bio %}<p class="text-sm mb-3 whitespace-pre-line">{{ p.bio }}</p>{% endif %}
+  {% for key, label in questions[u.role] %}
+    <p class="text-xs text-slate-500">{{ label }}</p>
+    <p class="text-sm mb-2 whitespace-pre-line">{{ (u.application.answers.get(key) if u.application else None) or '—' }}</p>
+  {% endfor %}
+  <hr class="my-3">
+{% endif %}
 {% for label, values in [("Availability", p.availability), ("Languages", p.languages),
                          ("Skills", p.development_areas), ("Goals", p.goals), ("Educational path", p.education_paths)] %}
   <p class="text-xs text-slate-500">{{ label }}</p><div class="mb-2">{{ tags(values) if values else '—' }}</div>

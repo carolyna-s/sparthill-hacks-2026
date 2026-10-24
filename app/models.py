@@ -138,7 +138,7 @@ class Cohort(db.Model):
 
 
 class Application(db.Model):
-    STATUSES = ("draft", "submitted", "accepted", "waitlisted", "rejected", "withdrawn")
+    STATUSES = ("draft", "submitted", "accepted", "rejected", "withdrawn")
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
@@ -185,6 +185,7 @@ class Match(db.Model):
 
     proposed -> approved | rejected (staff deny)
     approved -> withdrawn (mentee withdraws after release) | ended
+    Staff can undo approve, reject and end, and cancel (delete) a proposal.
     Scores are 0-100: final = (alpha*structured + (1-alpha)*semantic) * context_multiplier.
     """
 
@@ -406,8 +407,8 @@ class MatchFeedback(db.Model):
     """
 
     REASONS = {
-        "deny": ("gut_feeling", "interests_or_pathway", "experience_gap", "language_or_communication",
-                 "fit_concern", "mentor_overloaded", "conflict_of_interest", "other"),
+        "deny": ("interests_or_pathway", "experience_gap", "language_or_communication", "fit_concern",
+                 "mentor_overloaded", "conflict_of_interest", "other"),
         "withdraw": ("no_time", "not_a_good_fit", "found_other_mentorship", "program_not_for_me", "other"),
     }
 
