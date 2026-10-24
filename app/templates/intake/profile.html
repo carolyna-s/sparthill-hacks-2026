@@ -132,13 +132,17 @@
   {% set locked_answers = application and application.status != 'draft' %}
   {% call card("In your own words") %}
     <p class="text-sm text-slate-500 mb-4">Staff read these when reviewing applications and making matches. A few sentences each is plenty.</p>
-    {% call field("Topics, fields, or hobbies you enjoy talking about" if mentor else "Topics, fields, or hobbies you want to explore") %}
+    {% if Industry_Relevant_Prompt_Data.interests %}
+    {% call field(Industry_Relevant_Prompt_Data.interests) %}
       <textarea name="interests" rows="2" class="{{ input_cls() }}">{{ p.interests or '' }}</textarea>
     {% endcall %}
-    {% call field("What do you hope to offer through this program?" if mentor else "What are you looking for from this program?") %}
+    {% endif %}
+    {% if Industry_Relevant_Prompt_Data.looking_for %}
+    {% call field(Industry_Relevant_Prompt_Data.looking_for) %}
       <textarea name="looking_for" rows="3" class="{{ input_cls() }}">{{ p.looking_for or '' }}</textarea>
     {% endcall %}
-    {% for key, label in questions %}
+    {% endif %}
+    {% for key, label in Personality_Questions_Data %}
       {% call field(label) %}
         <textarea name="{{ key }}" rows="3" class="{{ input_cls() }}" {{ 'disabled' if locked_answers }}>{{ application.answers.get(key, '') if application else '' }}</textarea>
       {% endcall %}

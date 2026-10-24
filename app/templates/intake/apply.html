@@ -19,7 +19,7 @@
 {% endif %}
 
 {% call card("Your answers") %}
-  {% for key, label in questions %}
+  {% for key, label in Personality_Questions_Data %}
     <p class="text-sm font-medium">{{ label }}</p>
     <p class="text-sm text-slate-600 mb-3 whitespace-pre-line">{{ application.answers.get(key) or '—' }}</p>
   {% endfor %}

@@ -129,7 +129,10 @@ def seed() -> None:
         u.profile = Profile(headline=headline, interests=", ".join(interests), goals=goals,
                             development_areas=areas, capacity=cap, **MATCHING[name])
         u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
-                                    answers={"experience": "10+ years", "why": "Give back", "commitment": "4"})
+                                    answers={
+                                        "mentorship_style": "A supportive mentor who shares practical experience.",
+                                        "career_advice": "Build strong fundamentals and seek feedback early.",
+                                    })
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
 
@@ -139,7 +142,10 @@ def seed() -> None:
         # Leave the last mentee pending so the review queue has something in it.
         status = "submitted" if i == len(MENTEES) - 1 else "accepted"
         u.application = Application(cohort_id=cohort.id, status=status, submitted_at=utcnow(),
-                                    answers={"why": "Grow my career", "success": "A clear plan", "commitment": "4"})
+                                    answers={
+                                        "mentorship_style": "Clear communication and actionable feedback.",
+                                        "career_advice": "How to choose opportunities that build my skills.",
+                                    })
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
 

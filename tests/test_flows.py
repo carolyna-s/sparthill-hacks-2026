@@ -37,10 +37,22 @@ def test_mentee_intake_flow(client):
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
 
-    resp = client.post("/profile/4", data={"looking_for": "Interview practice", "why": "a", "success": "b"})
+    profile_page = client.get("/profile/4")
+    assert b"What subjects are you interested in learning more about?" in profile_page.data
+    assert b"What communication or mentorship style helps you learn most effectively?" in profile_page.data
+    assert b"What type of advice would you like to receive as you begin or develop your career?" in profile_page.data
+
+    resp = client.post("/profile/4", data={
+        "looking_for": "Interview practice",
+        "mentorship_style": "Clear communication",
+        "career_advice": "Actionable career guidance",
+    })
     assert resp.headers["Location"].endswith("/apply")
     assert user.profile.looking_for == "Interview practice"
-    assert user.application.answers == {"why": "a", "success": "b", "commitment": ""}
+    assert user.application.answers == {
+        "mentorship_style": "Clear communication",
+        "career_advice": "Actionable career guidance",
+    }
 
     client.post("/apply", data={"action": "submit"})
     assert user.application.status == "draft"  # agreement not signed yet
@@ -82,6 +94,11 @@ def test_required_fields_block_next(client):
                                            "capacity": "3"})
     assert resp.headers["Location"].endswith("/profile/3")
     assert user.profile.capacity == 3
+    client.post("/profile/3", data={})
+    profile_page = client.get("/profile/4")
+    assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
+    assert b"What type of mentor do you see yourself being?" in profile_page.data
+    assert b"What type of advice would you give someone beginning their career in your field?" in profile_page.data
 
 
 def test_staff_pages_are_staff_only(client):

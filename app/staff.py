@@ -12,7 +12,7 @@ from sqlalchemy import func
 from . import matching
 from .auth import role_required
 from .extensions import db
-from .intake import QUESTIONS
+from .intake import Personality_Questions_Data
 from .models import (Application, Attendance, Event, Feedback, Match, Message, Submission, User,
                      utcnow)
 
@@ -58,7 +58,8 @@ def application(app_id: int):
         db.session.commit()
         flash(f"{a.user.name}: {decision}.", "ok")
         return redirect(url_for("staff.applications"))
-    return render_template("staff/application.html", a=a, questions=QUESTIONS[a.user.role])
+    return render_template("staff/application.html", a=a,
+                           Personality_Questions_Data=Personality_Questions_Data[a.user.role])
 
 
 # --- matching ----------------------------------------------------------------------
