@@ -428,32 +428,76 @@ def test_unread_message_badge_and_live_thread_updates(client):
         client.get(f"/messages/{match.id}").data.index(b"Arrived while open")  # oldest first
 
 
-def test_mentor_schedules_meeting_on_both_calendars(client):
+def test_either_side_proposes_meeting_and_the_other_confirms(client):
     from app import matching
 
     match = matching.propose_all()[0]
     match.status = "approved"
     db.session.commit()
-    when = utcnow().replace(hour=15, minute=30, second=0, microsecond=0)
+    when = (utcnow() + timedelta(days=1)).replace(hour=15, minute=30, second=0, microsecond=0)
 
+    # The mentee proposes; it's not on anyone's calendar until the mentor accepts.
     login(client, match.mentee.email)
-    assert client.post(f"/messages/{match.id}/meetings", data={"starts_at": when.isoformat()}).status_code == 403
-    login(client, match.mentor.email)
-    client.post(f"/messages/{match.id}/meetings", data={"starts_at": when.strftime("%Y-%m-%dT%H:%M"), "note": "Zoom"})
+    client.post(f"/messages/{match.id}/meetings",
+                data={"starts_at": when.strftime("%Y-%m-%dT%H:%M"), "duration": "45", "note": "Zoom"})
     meeting = db.session.query(Meeting).one()
-    assert meeting.starts_at == when
-    assert b"Scheduled a meeting" in client.get(f"/messages/{match.id}").data
-    assert f"Meeting with {match.mentee.name}".encode() in client.get("/dashboard").data
+    assert (meeting.status, meeting.starts_at, meeting.duration_minutes, meeting.created_by_id) == \
+        ("proposed", when, 45, match.mentee_id)
+    assert b"Proposed a meeting" in client.get(f"/messages/{match.id}").data
+    assert client.post(f"/meetings/{meeting.id}/accept").status_code == 400  # can't accept your own
+    login(client, "staff.admin@example.org")
+    assert client.post(f"/meetings/{meeting.id}/accept").status_code == 404  # not a participant
+
+    login(client, match.mentor.email)
+    dashboard = client.get("/dashboard").data
+    assert b"Meeting times to confirm" in dashboard
+    assert f"Meeting with {match.mentee.name}".encode() not in dashboard
+    assert b"Waiting for you" in client.get(f"/messages/{match.id}").data
+    client.post(f"/meetings/{meeting.id}/accept")
+    assert meeting.status == "confirmed"
+    assert b"Confirmed the meeting" in client.get(f"/messages/{match.id}").data
+    dashboard = client.get("/dashboard").data
+    assert f"Meeting with {match.mentee.name}".encode() in dashboard and b"Meeting times to confirm" not in dashboard
+    assert b"To do" not in dashboard  # modules' to-do is for mentees
 
     login(client, match.mentee.email)
     dashboard = client.get("/dashboard").data
     assert f"Meeting with {match.mentor.name}".encode() in dashboard
     assert b"To do" in dashboard
-    login(client, match.mentor.email)
-    assert b"To do" not in client.get("/dashboard").data  # modules' to-do is for mentees
-
-    client.post(f"/meetings/{meeting.id}/cancel")
+    client.post(f"/meetings/{meeting.id}/cancel")  # either side can cancel a confirmed meeting
     assert db.session.query(Meeting).count() == 0
+
+    # The mentor proposes two times: the mentee declines one; the mentor withdraws the other.
+    login(client, match.mentor.email)
+    for hour in (10, 11):
+        client.post(f"/messages/{match.id}/meetings", data={"starts_at": when.replace(hour=hour).isoformat()})
+    first, second = db.session.query(Meeting).order_by(Meeting.starts_at).all()
+    assert client.post(f"/meetings/{first.id}/decline").status_code == 400  # only the other side declines
+    login(client, match.mentee.email)
+    client.post(f"/meetings/{first.id}/decline")
+    assert client.post(f"/meetings/{second.id}/cancel").status_code == 400  # not theirs to withdraw
+    login(client, match.mentor.email)
+    client.post(f"/meetings/{second.id}/cancel")
+    assert db.session.query(Meeting).count() == 0
+
+
+def test_suggested_meeting_times_come_from_shared_availability(client):
+    from app import matching, program
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    tomorrow = (utcnow() + timedelta(days=1)).strftime("%A")
+    match.mentee.profile.availability = [f"{tomorrow} - afternoon", f"{tomorrow} - morning"]
+    match.mentor.profile.availability = [f"{tomorrow} - afternoon"]
+    db.session.commit()
+
+    slots = program.suggested_times(match)
+    assert slots and slots[0].hour == 13 and slots[0].strftime("%A") == tomorrow
+    assert all(s.strftime("%A") == tomorrow and s.hour == 13 for s in slots)  # only the shared period
+    login(client, match.mentee.email)
+    assert f'data-suggested-time="{slots[0]:%Y-%m-%dT%H:%M}"'.encode() in client.get(f"/messages/{match.id}").data
+    client.post(f"/messages/{match.id}/meetings", data={"starts_at": slots[0].isoformat()})
+    assert slots[0] not in program.suggested_times(match)  # a proposed slot isn't suggested again
 
 
 def test_reject_match_needs_reason_and_is_never_reproposed(client):

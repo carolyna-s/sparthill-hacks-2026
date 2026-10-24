@@ -48,34 +48,81 @@
   </section>
 
   <aside>
+  {% set for_me = meetings | selectattr('status', 'equalto', 'proposed') | rejectattr('created_by_id', 'equalto', current_user.id) | list %}
+  {% set by_me = meetings | selectattr('status', 'equalto', 'proposed') | selectattr('created_by_id', 'equalto', current_user.id) | list %}
+  {% set confirmed = meetings | selectattr('status', 'equalto', 'confirmed') | list %}
   {% call card("Meetings") %}
-    <ul class="space-y-2 mb-1">
-      {% for mt in meetings %}
-        <li class="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+    {% if participant and for_me %}
+      <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-2">Waiting for you</p>
+      <ul class="space-y-2 mb-4">
+        {% for mt in for_me %}
+          <li class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+            <span class="block font-medium">{{ mt.starts_at.strftime('%a, %b %d · %I:%M %p') }} <span class="font-normal text-slate-500">· {{ mt.duration_minutes }} min</span></span>
+            <span class="block text-slate-600">Proposed by {{ mt.created_by.name }}{% if mt.note %} · {{ mt.note }}{% endif %}</span>
+            <div class="flex gap-2 mt-2">
+              <form method="post" action="{{ url_for('program.respond_meeting', meeting_id=mt.id, action='accept') }}">{{ csrf() }}{{ btn("Accept") }}</form>
+              <form method="post" action="{{ url_for('program.respond_meeting', meeting_id=mt.id, action='decline') }}">{{ csrf() }}{{ btn("Decline", "secondary") }}</form>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Confirmed</p>
+    <ul class="space-y-2 mb-4">
+      {% for mt in confirmed %}
+        <li class="flex items-start gap-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm">
           <span class="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
           <span class="flex-1"><span class="block font-medium">{{ mt.starts_at.strftime('%a, %b %d · %I:%M %p') }}</span>
-            {% if mt.note %}<span class="text-slate-500">{{ mt.note }}</span>{% endif %}</span>
-          {% if current_user.id == m.mentor_id %}
-            <form method="post" action="{{ url_for('program.cancel_meeting', meeting_id=mt.id) }}"
+            <span class="text-slate-500">{{ mt.duration_minutes }} min{% if mt.note %} · {{ mt.note }}{% endif %}</span></span>
+          {% if participant %}
+            <form method="post" action="{{ url_for('program.respond_meeting', meeting_id=mt.id, action='cancel') }}"
                   onsubmit="return confirm('Cancel this meeting?')">
               {{ csrf() }}<button class="text-xs text-slate-500 hover:text-red-600">Cancel</button>
             </form>
           {% endif %}
         </li>
       {% else %}
-        <li class="text-sm text-slate-500">
-          {% if current_user.id == m.mentor_id %}No meeting scheduled. Agree on a time in the chat, then add it here.
-          {% elif current_user.id == m.mentee_id %}No meeting scheduled yet. Your mentor will set one; it'll show on your dashboard calendar.
-          {% else %}No meeting scheduled.{% endif %}
-        </li>
+        <li class="text-sm text-slate-500">No meeting confirmed yet.</li>
       {% endfor %}
     </ul>
-    {% if current_user.id == m.mentor_id %}
-    <form method="post" action="{{ url_for('program.schedule_meeting', match_id=m.id) }}" class="space-y-2 mt-3 pt-3 border-t border-slate-100">
+
+    {% if by_me %}
+      <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Waiting for {{ other.name.split()[0] }}</p>
+      <ul class="space-y-2 mb-4">
+        {% for mt in by_me %}
+          <li class="flex items-start gap-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm">
+            <span class="flex-1"><span class="block font-medium">{{ mt.starts_at.strftime('%a, %b %d · %I:%M %p') }}</span>
+              <span class="text-slate-500">{{ mt.duration_minutes }} min{% if mt.note %} · {{ mt.note }}{% endif %}</span></span>
+            <form method="post" action="{{ url_for('program.respond_meeting', meeting_id=mt.id, action='cancel') }}">
+              {{ csrf() }}<button class="text-xs text-slate-500 hover:text-red-600">Withdraw</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if participant %}
+    <form method="post" action="{{ url_for('program.schedule_meeting', match_id=m.id) }}" class="space-y-2 pt-3 border-t border-slate-100" data-propose-form>
       {{ csrf() }}
-      <input type="datetime-local" name="starts_at" required class="{{ input_cls() }}" aria-label="Meeting date and time">
+      <p class="text-sm font-medium">Propose a time</p>
+      {% if suggestions %}
+        <p class="text-xs text-slate-500">Times you're both free (from your weekly availability):</p>
+        <div class="flex flex-wrap gap-1.5">
+          {% for t in suggestions %}
+            <button type="button" data-suggested-time="{{ t.strftime('%Y-%m-%dT%H:%M') }}"
+                    class="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100">
+              {{ t.strftime('%a %b %d, %I:%M %p') }}</button>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <input type="datetime-local" name="starts_at" required class="{{ input_cls() }}" aria-label="Meeting date and time" data-propose-time>
+      <select name="duration" class="{{ input_cls() }}" aria-label="Length">
+        {% for d in durations %}<option value="{{ d }}" {{ 'selected' if d == 30 }}>{{ d }} minutes</option>{% endfor %}
+      </select>
       <input name="note" maxlength="200" placeholder="Where / agenda (optional)" class="{{ input_cls() }}">
-      {{ btn("Schedule meeting") }}
+      {{ btn("Propose time") }}
+      <p class="text-[11px] text-slate-400">{{ other.name.split()[0] }} gets a message and can accept or decline.</p>
     </form>
     {% endif %}
   {% endcall %}
@@ -167,6 +214,15 @@
       });
       input.focus();
     }
+
+    // Suggested meeting times fill in the "Propose a time" form.
+    const proposeTime = document.querySelector("[data-propose-time]");
+    document.querySelectorAll("[data-suggested-time]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        if (proposeTime) proposeTime.value = chip.dataset.suggestedTime;
+        document.querySelectorAll("[data-suggested-time]").forEach((c) => c.classList.toggle("ring-2", c === chip));
+      });
+    });
 
     const newMessage = thread.querySelector("[data-new]");
     if (newMessage) newMessage.scrollIntoView({block: "center"}); else scrollToBottom();

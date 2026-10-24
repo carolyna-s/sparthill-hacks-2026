@@ -45,7 +45,7 @@ def due_reminders() -> list[tuple[User, str, str, str]]:
                     f"Reply at {cfg['BASE_URL']}/messages/{match.id}"))
 
     upcoming = (db.session.query(Meeting).join(Match, Match.id == Meeting.match_id)
-                .filter(Meeting.starts_at > now,
+                .filter(Meeting.status == "confirmed", Meeting.starts_at > now,
                         Meeting.starts_at <= now + timedelta(hours=cfg["MEETING_REMINDER_HOURS"]),
                         Match.status == "approved"))
     for mt in upcoming:

@@ -12,7 +12,7 @@ Matching inputs come in two kinds (docs/PLAN.md §4):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -332,16 +332,34 @@ class Message(db.Model):
 
 
 class Meeting(db.Model):
-    """A mentor/mentee meeting the mentor schedules from the message thread. Shows on both calendars."""
+    """A mentor/mentee meeting, scheduled from the message thread.
+
+    Either side proposes a time block (created_by_id is the proposer); the other accepts it, which
+    makes it confirmed, or declines it, which deletes it. Only confirmed meetings go on the
+    calendars and get reminders.
+    """
+
+    STATUSES = ("proposed", "confirmed")
+    DURATIONS = (30, 45, 60, 90)  # minutes
 
     id = db.Column(db.Integer, primary_key=True)
     match_id = db.Column(db.Integer, db.ForeignKey("match.id"), nullable=False, index=True)
     starts_at = db.Column(db.DateTime, nullable=False)
+    duration_minutes = db.Column(db.Integer, default=30, server_default="30", nullable=False)
+    status = db.Column(db.String(10), default="confirmed", server_default="confirmed", nullable=False)
     note = db.Column(db.String(200), default="")
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     match = db.relationship("Match")
+    created_by = db.relationship("User")
+
+    @property
+    def ends_at(self) -> datetime:
+        return self.starts_at + timedelta(minutes=self.duration_minutes)
+
+    def when(self) -> str:
+        return f"{self.starts_at:%a, %b %d at %I:%M %p} ({self.duration_minutes} min)"
 
 
 class Feedback(db.Model):

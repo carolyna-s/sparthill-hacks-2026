@@ -132,8 +132,10 @@ open from creation.
 
 **message**: `match_id`, `sender_id`, `body`, `sent_at`, `read_at`.
 
-**meeting**: a mentor-scheduled meeting, shown on both people's dashboard calendars. `match_id`,
-`starts_at`, `note`, `created_by_id`, `created_at`.
+**meeting**: a time block either the mentee or the mentor proposes from the message thread; the other
+accepts (`status` `proposed` → `confirmed`) or declines (row deleted). Only confirmed meetings show on the
+dashboard calendars and get reminders. `match_id`, `starts_at`, `duration_minutes` (30/45/60/90), `status`,
+`note`, `created_by_id` (the proposer), `created_at`.
 
 **feedback**: satisfaction ratings. `user_id`, `event_id` *or* `match_id`, `rating` (1–5), `comment`.
 No page collects ratings right now (the module page's rating form was removed), so the table only

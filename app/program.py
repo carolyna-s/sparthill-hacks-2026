@@ -5,7 +5,7 @@ Modules are stored in the `event` table.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -52,12 +52,43 @@ def upcoming_modules(limit: int = 5) -> list[Event]:
 
 
 def meetings_for(user: User, upcoming_only: bool = False) -> list[Meeting]:
-    """Meetings in the user's approved matches."""
+    """Confirmed meetings in the user's approved matches (what goes on their calendar)."""
     q = (db.session.query(Meeting).join(Match, Meeting.match_id == Match.id)
-         .filter(Match.status == "approved", (Match.mentee_id == user.id) | (Match.mentor_id == user.id)))
+         .filter(Meeting.status == "confirmed", Match.status == "approved",
+                 (Match.mentee_id == user.id) | (Match.mentor_id == user.id)))
     if upcoming_only:
         q = q.filter(Meeting.starts_at >= utcnow() - timedelta(hours=1))
     return q.order_by(Meeting.starts_at).all()
+
+
+def meeting_requests_for(user: User) -> list[Meeting]:
+    """Meeting times the other person proposed that are waiting for this user to accept or decline."""
+    return (db.session.query(Meeting).join(Match, Meeting.match_id == Match.id)
+            .filter(Meeting.status == "proposed", Meeting.created_by_id != user.id,
+                    Meeting.starts_at >= utcnow() - timedelta(hours=1), Match.status == "approved",
+                    (Match.mentee_id == user.id) | (Match.mentor_id == user.id))
+            .order_by(Meeting.starts_at).all())
+
+
+# Start time used for each weekly availability period when suggesting meeting times.
+PERIOD_HOURS = {"morning": 9, "afternoon": 13, "evening": 17, "night": 20}
+
+
+def suggested_times(m: Match, limit: int = 4, days: int = 14) -> list[datetime]:
+    """Upcoming slots that fit both people's weekly availability (from sign-up) and don't clash
+    with a meeting already proposed or confirmed."""
+    shared = set(m.mentee.profile.availability or []) & set(m.mentor.profile.availability or [])
+    booked = [(x.starts_at, x.ends_at) for x in db.session.query(Meeting).filter_by(match_id=m.id)]
+    out = []
+    for offset in range(1, days + 1):
+        day = (utcnow() + timedelta(days=offset)).date()
+        for period, hour in PERIOD_HOURS.items():
+            start = datetime.combine(day, time(hour))
+            if f"{day:%A} - {period}" in shared and not any(b <= start < e for b, e in booked):
+                out.append(start)
+                if len(out) == limit:
+                    return out
+    return out
 
 
 def todo_for(user: User) -> list[tuple[Event, str]]:
@@ -268,7 +299,8 @@ def messages(match_id: int):
     meetings = (db.session.query(Meeting).filter(Meeting.match_id == m.id, Meeting.starts_at >= utcnow() - timedelta(hours=1))
                 .order_by(Meeting.starts_at).all())
     return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow(),
-                           new_ids=new_ids)
+                           new_ids=new_ids, durations=Meeting.DURATIONS,
+                           suggestions=suggested_times(m) if m.includes(current_user) else [])
 
 
 @bp.get("/messages/<int:match_id>/updates")
@@ -293,38 +325,63 @@ def unread_count():
     return response
 
 
+# Scheduling: either side proposes a time block; the other accepts (confirmed: on both calendars,
+# reminded) or declines it. The proposer can withdraw it; either side can cancel a confirmed one.
+# Each step is also posted in the thread, so the other person gets the usual message notification.
+
+def _participant_meeting(meeting_id: int) -> Meeting:
+    mt = db.get_or_404(Meeting, meeting_id)
+    if mt.match.status != "approved" or not mt.match.includes(current_user):
+        abort(404)
+    return mt
+
+
+def _post_to_thread(match_id: int, body: str) -> None:
+    db.session.add(Message(match_id=match_id, sender_id=current_user.id, body=body))
+    db.session.commit()
+    notify.email_unread_messages(match_id, current_user.id)
+
+
 @bp.post("/messages/<int:match_id>/meetings")
 @login_required
 def schedule_meeting(match_id: int):
-    """The mentor picks a date and time; it lands on both calendars and is announced in the thread."""
     m = _approved_match(match_id)
-    if current_user.id != m.mentor_id:
+    if not m.includes(current_user):
         abort(403)
     try:
         starts_at = datetime.fromisoformat(request.form.get("starts_at", ""))
     except ValueError:
         flash("Pick a date and time for the meeting.", "error")
         return redirect(url_for("program.messages", match_id=m.id))
-    note = request.form.get("note", "").strip()[:200]
-    db.session.add(Meeting(match_id=m.id, starts_at=starts_at, note=note, created_by_id=current_user.id))
-    db.session.add(Message(match_id=m.id, sender_id=current_user.id,
-                           body=f"📅 Scheduled a meeting for {starts_at:%a, %b %d at %I:%M %p}." + (f" {note}" if note else "")))
-    db.session.commit()
-    notify.email_unread_messages(m.id, current_user.id)
-    flash("Meeting scheduled.", "ok")
+    duration = request.form.get("duration", type=int)
+    mt = Meeting(match_id=m.id, starts_at=starts_at, status="proposed", created_by_id=current_user.id,
+                 duration_minutes=duration if duration in Meeting.DURATIONS else 30,
+                 note=request.form.get("note", "").strip()[:200])
+    db.session.add(mt)
+    _post_to_thread(m.id, f"📅 Proposed a meeting: {mt.when()}." + (f" {mt.note}" if mt.note else "")
+                    + " Accept or decline it under Meetings.")
+    flash(f"Proposed {mt.when()}. {m.other(current_user).name} will be asked to confirm.", "ok")
     return redirect(url_for("program.messages", match_id=m.id))
 
 
-@bp.post("/meetings/<int:meeting_id>/cancel")
+@bp.post("/meetings/<int:meeting_id>/<action>")
 @login_required
-def cancel_meeting(meeting_id: int):
-    mt = db.get_or_404(Meeting, meeting_id)
-    if current_user.id != mt.match.mentor_id:
-        abort(403)
-    db.session.add(Message(match_id=mt.match_id, sender_id=current_user.id,
-                           body=f"Cancelled the meeting on {mt.starts_at:%a, %b %d at %I:%M %p}."))
-    db.session.delete(mt)
-    db.session.commit()
-    notify.email_unread_messages(mt.match_id, current_user.id)
-    flash("Meeting cancelled.", "ok")
-    return redirect(url_for("program.messages", match_id=mt.match_id))
+def respond_meeting(meeting_id: int, action: str):
+    mt = _participant_meeting(meeting_id)
+    mine, status, match_id, when = mt.created_by_id == current_user.id, mt.status, mt.match_id, mt.when()
+    if action == "accept" and status == "proposed" and not mine:
+        mt.status = "confirmed"
+        _post_to_thread(match_id, f"✅ Confirmed the meeting on {when}.")
+        flash("Meeting confirmed. It's on both of your calendars.", "ok")
+    elif action == "decline" and status == "proposed" and not mine:
+        db.session.delete(mt)
+        _post_to_thread(match_id, f"Declined the proposed meeting on {when}. Suggest another time?")
+        flash("Declined. You can propose a different time.", "ok")
+    elif action == "cancel" and (status == "confirmed" or mine):
+        db.session.delete(mt)
+        verb = "Cancelled the meeting" if status == "confirmed" else "Withdrew the proposed meeting"
+        _post_to_thread(match_id, f"{verb} on {when}.")
+        flash("Meeting cancelled." if status == "confirmed" else "Proposal withdrawn.", "ok")
+    else:
+        abort(400)
+    return redirect(url_for("program.messages", match_id=match_id))

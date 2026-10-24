@@ -58,6 +58,7 @@ def dashboard():
     return render_template("dashboard.html", application=current_user.application, matches=matches,
                            pending_matches=pending_matches,
                            upcoming=upcoming, todo=program.todo_for(current_user),
+                           meeting_requests=program.meeting_requests_for(current_user),
                            Personality_Questions_Data=Personality_Questions_Data,
                            cal=_month_calendar(meetings))
 

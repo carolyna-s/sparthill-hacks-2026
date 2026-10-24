@@ -115,6 +115,17 @@
   </div>
 
   <div>
+    {% if meeting_requests %}
+    {% call card("Meeting times to confirm") %}
+      {% for mt in meeting_requests %}
+        <a href="{{ url_for('program.messages', match_id=mt.match_id) }}"
+           class="block rounded-lg px-3 py-2 -mx-3 text-sm bg-amber-50 hover:bg-amber-100 {{ 'mt-2' if not loop.first }}">
+          <span class="block font-medium">{{ mt.created_by.name }} proposed {{ mt.starts_at.strftime('%a, %b %d at %I:%M %p') }}</span>
+          <span class="text-amber-800">{{ mt.duration_minutes }} min · Accept or decline →</span>
+        </a>
+      {% endfor %}
+    {% endcall %}
+    {% endif %}
     {% call card("Calendar") %}
       <p class="text-sm font-medium text-slate-700 mb-3">{{ cal.title }}</p>
       <div class="grid grid-cols-7 text-center text-xs text-slate-400 mb-1">
