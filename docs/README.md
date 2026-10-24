@@ -5,8 +5,29 @@ a weighted matching engine ranks mentors for each mentee, matched pairs work thr
 (pre-work, a live session with check-in, post-work), message each other and schedule meetings,
 and staff view applicants, approve matches, and track participation. Admins manage accounts.
 
-One Flask service serves the whole app. Data lives in **Supabase Postgres** and uploads in
-**Supabase Storage**; there is no local-database mode (tests use a throwaway SQLite file). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
+**Live app:** https://sparthill-hacks-2026-713138367961.us-east4.run.app
+
+One Flask service serves the whole app. It runs as a Docker container on **Google Cloud Run**
+(`us-east4`). Data lives in **Supabase Postgres** and uploads in **Supabase Storage**; there is
+no local-database mode (tests use a throwaway SQLite file). Roadmap and design:
+[docs/PLAN.md](PLAN.md).
+
+## Tech stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3.12 |
+| Web framework | Flask 3 (blueprints), Flask-Login (sessions and roles), Flask-WTF (forms and CSRF) |
+| Frontend | Server-rendered Jinja templates, Tailwind CSS via CDN, small inline JS for live message polling (no build step) |
+| Database | Supabase Postgres with pgvector, accessed via SQLAlchemy 2 and psycopg 3; SQLite in tests |
+| Migrations | Alembic via Flask-Migrate |
+| File storage | Supabase Storage (private `uploads` bucket) |
+| Matching | Weighted scoring plus SciPy's Hungarian algorithm for one-to-one assignment |
+| AI | OpenAI embeddings of free-text answers; Claude (`anthropic` SDK) for LinkedIn PDF import, with pypdf for text extraction |
+| Email | Gmail SMTP (or Amazon SES / console log), every message recorded in `email_log` |
+| App server | Gunicorn |
+| Hosting | Google Cloud Run (Docker image from `Dockerfile`) |
+| Tests | pytest |
 
 ## How people use the app
 
@@ -46,8 +67,8 @@ created by an admin.
      Mentors don't submit. They see each prompt plus their mentees' submissions and files, and
      the list shows "N/M mentees submitted".
 6. **Reminders by email** (via `flask send-reminders` or the cron endpoint), each sent at most
-   once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), and messages
-   left unread for a while.
+   once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), messages
+   left unread for a while, and scheduled meetings starting within 24 hours (both people).
 7. **Instant emails** (templates in `app/templates/email/`): both people get one when their match is
    confirmed, and 3 minutes after a message the recipient gets "You have new messages from X" if
    they haven't opened the thread yet, at most once an hour per thread.
@@ -182,7 +203,7 @@ Quick tour:
 | Task | Command |
 | --- | --- |
 | Run tests | `pytest` (always uses a throwaway SQLite DB, never `.env`'s) |
-| Send due reminders | `flask send-reminders` (prints emails unless `EMAIL_BACKEND=ses`) |
+| Send due reminders | `flask send-reminders` (prints emails unless `EMAIL_BACKEND` is `smtp` or `ses`) |
 | Embed text answers for matching | `flask embed` (needs `OPENAI_API_KEY`; only calls the API for new or changed answers) |
 | Change the schema | edit `app/models.py`, then `flask db migrate -m "what changed"` and `flask db upgrade`, then commit `migrations/versions/*` |
 | Run like production | `gunicorn -c gunicorn.conf.py wsgi:app` |
@@ -231,8 +252,33 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 | `SUPABASE_STORAGE_BUCKET` | `uploads` | another private bucket |
 | `EMAIL_BACKEND` | `console` (log only) | `smtp` (Gmail: set `MAIL_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD` = app password) or `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
+| `BASE_URL` | `http://localhost:8000` | the public URL used in email links (the Cloud Run URL in production) |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |
 | `OPENAI_API_KEY` | text answers not used in matching | OpenAI API key (embeddings only), then run `flask embed` once |
+
+## Deployment (Google Cloud Run)
+
+Production runs at https://sparthill-hacks-2026-713138367961.us-east4.run.app as the Cloud Run
+service `sparthill-hacks-2026` in region `us-east4`. The container is built from `Dockerfile`:
+on every boot it runs `flask db upgrade`, then starts Gunicorn on the `PORT` Cloud Run provides.
+
+To deploy a new version from the repo root:
+
+```bash
+gcloud run deploy sparthill-hacks-2026 --source . --region us-east4
+```
+
+- **Environment variables:** set the same variables as `.env` on the service (Cloud Run →
+  service → *Edit & deploy new revision* → *Variables & secrets*). In production use a real
+  `FLASK_SECRET_KEY`, set `BASE_URL` to the Cloud Run URL, and set `EMAIL_BACKEND=smtp` to send
+  real email. `.env` itself is excluded from the image by `.dockerignore`.
+- **Health check:** use `/health`. Cloud Run's front end reserves `/healthz`, so requests to it
+  never reach the app.
+- **Reminders:** schedule a Cloud Scheduler HTTP job that sends
+  `POST /internal/cron/reminders` with the header `X-Cron-Secret: <CRON_SECRET>`.
+- **Logs:** Gunicorn writes access and app logs to stdout, which show up in Cloud Logging.
+- **Migrations run on boot** against the shared Supabase database, so a deploy with a new
+  migration changes the schema everyone uses.
 
 ## Troubleshooting
 

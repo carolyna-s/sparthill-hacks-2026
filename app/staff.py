@@ -16,7 +16,7 @@ from .auth import role_required
 from .extensions import db
 from .intake import Personality_Questions_Data, missing_fields
 from .models import (Application, Attendance, Cohort, Event, Feedback, Match, MatchExclusion,
-                     MatchFeedback, MatchOverrideRequest, Message, Submission, User, utcnow)
+                     MatchFeedback, MatchOverrideRequest, Submission, User, utcnow)
 
 bp = Blueprint("staff", __name__, url_prefix="/staff")
 
@@ -66,7 +66,13 @@ def denials_for(match_ids) -> dict[int, list[MatchFeedback]]:
 def overview():
     applicant_count = (db.session.query(Application)
                        .filter(Application.status != "draft").count())
+    people = (db.session.query(User).filter(User.role.in_(("mentee", "mentor")))
+              .order_by(User.name).all())
+    pairs = (db.session.query(Match).filter_by(status="approved")
+             .join(User, User.id == Match.mentee_id).order_by(User.name).all())
     return render_template("staff/overview.html", applicant_count=applicant_count, report=report_data(),
+                           mentors=[u for u in people if u.role == "mentor"],
+                           mentees=[u for u in people if u.role == "mentee"], pairs=pairs,
                            proposed=db.session.query(Match).filter_by(status="proposed").count())
 
 
@@ -433,7 +439,8 @@ def new_event():
 # --- reporting ---------------------------------------------------------------------
 
 def report_data() -> dict:
-    participants = db.session.query(User).filter(User.role.in_(("mentee", "mentor"))).count()
+    roles = dict(db.session.query(User.role, func.count(User.id))
+                 .filter(User.role.in_(("mentee", "mentor"))).group_by(User.role).all())
     events = db.session.query(Event).order_by(Event.starts_at).all()
     attendance = dict(db.session.query(Attendance.event_id, func.count(Attendance.id))
                       .group_by(Attendance.event_id).all())
@@ -444,11 +451,11 @@ def report_data() -> dict:
                         .filter(Feedback.event_id.isnot(None)).group_by(Feedback.event_id).all())
     match_rating = db.session.query(func.avg(Feedback.rating)).filter(Feedback.match_id.isnot(None)).scalar()
     active_matches = db.session.query(Match).filter_by(status="approved").count()
-    messaging_matches = db.session.query(func.count(func.distinct(Message.match_id))).scalar()
     return {
-        "participants": participants,
+        "participants": roles.get("mentor", 0) + roles.get("mentee", 0),
+        "mentors": roles.get("mentor", 0),
+        "mentees": roles.get("mentee", 0),
         "active_matches": active_matches,
-        "messaging_rate": (messaging_matches / active_matches) if active_matches else None,
         "avg_match_rating": match_rating,
         "events": [{
             "event": e,

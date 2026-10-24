@@ -34,6 +34,8 @@ def role_required(*roles: str):
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.dashboard"))
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         role = request.form.get("role")
@@ -58,6 +60,8 @@ def register():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("main.dashboard"))
     if request.method == "POST":
         user = db.session.query(User).filter_by(email=request.form["email"].strip().lower()).first()
         if user and user.check_password(request.form["password"]) and not user.is_active:

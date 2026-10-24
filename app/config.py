@@ -50,6 +50,7 @@ class Config:
     # Reminder windows
     DUE_SOON_HOURS = 48
     UNREAD_MESSAGE_HOURS = 24
+    MEETING_REMINDER_HOURS = 24
 
     # New-message emails (app/notify.py): sent on each message, at most one per thread per cooldown
     MESSAGE_EMAIL_COOLDOWN_MINUTES = 60

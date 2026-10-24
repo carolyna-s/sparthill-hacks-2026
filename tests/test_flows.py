@@ -10,7 +10,7 @@ from app.models import (Application, Attendance, AuditLog, Event, Feedback, Matc
 from app.reminders import send_due_reminders
 from app.staff import QUEUE_ORDER
 
-from .conftest import login
+from .conftest import PASSWORD, login
 
 
 def test_healthz(client):
@@ -1250,3 +1250,27 @@ def test_admin_changes_own_password(client):
                                         "confirm_password": "newpass123"})
     me = db.session.query(User).filter_by(email="backend.admin@example.org").one()
     assert me.check_password("newpass123")
+
+
+def test_login_and_register_redirect_when_already_signed_in(client):
+    login(client, "jordan.kim@example.org")
+    for path in ("/login", "/register"):
+        assert client.get(path).headers["Location"].endswith("/dashboard")
+    resp = client.post("/login", data={"email": "staff.admin@example.org", "password": PASSWORD})
+    assert resp.headers["Location"].endswith("/dashboard")
+    assert b"Jordan" in client.get("/dashboard", follow_redirects=True).data
+
+
+def test_meeting_reminder_sent_once_within_24_hours(client):
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    soon = Meeting(match_id=match.id, starts_at=utcnow() + timedelta(hours=20), created_by_id=match.mentor_id)
+    later = Meeting(match_id=match.id, starts_at=utcnow() + timedelta(hours=30), created_by_id=match.mentor_id)
+    db.session.add_all([soon, later])
+    db.session.commit()
+    send_due_reminders()
+    reminded = {r.user_id for r in db.session.query(ReminderLog).filter_by(key=f"meeting:{soon.id}")}
+    assert reminded == {match.mentee_id, match.mentor_id}
+    assert not db.session.query(ReminderLog).filter_by(key=f"meeting:{later.id}").count()
+    send_due_reminders()
+    assert db.session.query(ReminderLog).filter_by(key=f"meeting:{soon.id}").count() == 2

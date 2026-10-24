@@ -2,7 +2,7 @@
 
 `send_due_reminders()` is idempotent: each reminder has a key, and ReminderLog stops the
 same key going to the same person twice (every attempt, sent or failed, is also in EmailLog). Run it as often as you like — locally with
-`flask send-reminders`, on AWS via EventBridge Scheduler → POST /internal/cron/reminders.
+`flask send-reminders`, on Cloud Run via Cloud Scheduler → POST /internal/cron/reminders.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from datetime import timedelta
 from flask import current_app
 
 from .extensions import db
-from .models import Match, Message, ReminderLog, User, utcnow
+from .models import Match, Meeting, Message, ReminderLog, User, utcnow
 from .notify import send_email
 from .program import todo_for, unsigned_agreements
 
@@ -43,6 +43,18 @@ def due_reminders() -> list[tuple[User, str, str, str]]:
         recipient = match.other(msg.sender)
         out.append((recipient, f"message:{msg.id}", f"Unread message from {msg.sender.name}",
                     f"Reply at {cfg['BASE_URL']}/messages/{match.id}"))
+
+    upcoming = (db.session.query(Meeting).join(Match, Match.id == Meeting.match_id)
+                .filter(Meeting.starts_at > now,
+                        Meeting.starts_at <= now + timedelta(hours=cfg["MEETING_REMINDER_HOURS"]),
+                        Match.status == "approved"))
+    for mt in upcoming:
+        for user in (mt.match.mentee, mt.match.mentor):
+            other = mt.match.other(user)
+            out.append((user, f"meeting:{mt.id}", f"Reminder: meeting with {other.name} tomorrow",
+                        f"You have a meeting with {other.name} on {mt.starts_at:%a, %b %d at %I:%M %p}."
+                        + (f" {mt.note}" if mt.note else "")
+                        + f"\n\nSee the thread at {cfg['BASE_URL']}/messages/{mt.match_id}"))
     return out
 
 
