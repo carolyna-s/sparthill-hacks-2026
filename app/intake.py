@@ -378,9 +378,9 @@ def apply():
         elif unsigned_agreements(current_user):
             flash("Sign the program agreements before submitting.", "error")
         else:
-            app_row.status = "submitted"
+            app_row.status = "accepted"
             app_row.submitted_at = utcnow()
-            flash("Application submitted. Staff will review it soon.", "ok")
+            flash("Application submitted and added to the matching pool.", "ok")
             db.session.commit()
             return redirect(url_for("main.dashboard"))
         db.session.commit()

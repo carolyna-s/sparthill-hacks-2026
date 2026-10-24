@@ -3,7 +3,7 @@
 A web app for running a mentorship program: mentors and mentees apply and sign agreements,
 a weighted matching engine ranks mentors for each mentee, matched pairs work through modules
 (pre-work, a live session with check-in, post-work), message each other and schedule meetings,
-and staff review applicants, approve matches, and track participation. Admins manage accounts.
+and staff view applicants, approve matches, and track participation. Admins manage accounts.
 
 One Flask service serves the whole app. Data lives in **Supabase Postgres** and uploads in
 **Supabase Storage**; there is no local-database mode (tests use a throwaway SQLite file). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
@@ -19,13 +19,13 @@ created by an admin.
    a password (8+ characters).
 2. **Onboard.** Until onboarding is done, every page except the profile steps sends you back to
    the step you were on ("Please complete onboarding to access …"). In order:
-   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required, since
-     matching filters on them), then *Preferences* and *In your own words* (optional). A LinkedIn
+   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required:
+     matching filters on time slots and favors a shared language), then *Preferences* and *In your own words* (optional). A LinkedIn
      PDF can be uploaded to pre-fill suggestions.
    - **Agreements**: sign each active agreement for your role by typing your name.
    - **Application**: answer the application questions and submit.
-3. **Wait for review.** Staff accept or reject the application. Only accepted people go into
-   the matching pool. You can still edit your submitted application from the dashboard
+3. **Submit.** A completed application is accepted automatically and added to the matching pool.
+   You can still edit your submitted application from the dashboard
    (*Submitted Application* → `/dashboard/application`).
 4. **Get matched.** Staff propose and approve pairs. Matching is one-to-one, and mentees and
    mentors don't choose each other. Once a pair is approved it shows under **Your match** /
@@ -56,11 +56,9 @@ created by an admin.
 
 Staff land on **Dashboard** (Staff Overview) and work through the cycle from the top nav:
 
-- **Applicants:** the combined participant and application list. Read each application and accept
-  or reject it (with notes). The table has Name, Role, Application, Attendance_Rate, Match,
-  Submitted, and Acceptance Status columns and
-  pending/all filters, live search, sortable columns, quick accept/reject controls, and a confirmed
-  bulk accept action for every pending application. The last decision can be undone.
+- **Applicants:** a searchable, sortable list of submitted applications and participant details.
+  Staff can view application responses, attendance, and match information; application decisions
+  are automatic at submission.
 - **Matching:** *Auto-propose* runs the engine over everyone accepted and unmatched, or propose
   for one mentee. Staff **approve** to release a match to the mentee for confirmation, **reject**
   (needs a reason; the pair is never proposed again), or cancel proposals. Reviews started from
@@ -169,10 +167,10 @@ All demo accounts use the password `password123`.
 | Admin | `backend.admin@example.org` |
 | Staff | `staff.admin@example.org` (also `jamie.torres@example.org`, never logged in; `dana.whitfield@example.org`, deactivated) |
 | Mentor | `priya.raman@example.org`, `marcus.lee@example.org`, `elena.ortiz@example.org`, `sam.okafor@example.org` |
-| Mentee | `jordan.kim@example.org`, `avery.patel@example.org`, `riley.chen@example.org`, `taylor.brooks@example.org`, `morgan.diaz@example.org` (pending review) |
+| Mentee | `jordan.kim@example.org`, `avery.patel@example.org`, `riley.chen@example.org`, `taylor.brooks@example.org`, `morgan.diaz@example.org` |
 
 Quick tour:
-1. As **staff**: go to **Applicants** and accept Morgan, then **Matching** → *Auto-propose* → approve.
+1. As **staff**: go to **Matching** → *Auto-propose* → approve.
 2. As jordan.kim's mentor: open **Messages** and schedule a meeting. As **jordan.kim**: see it on the
    dashboard calendar, open **Modules** → *Updating your Resume*, submit pre-work, and check in with code `RES01`.
    Post-work stays locked until the session's start time.
@@ -207,7 +205,7 @@ app/
   embeddings.py   OpenAI embeddings of free-text answers, for the text part of the score
   program.py      modules, pre-/post-work, check-ins, messaging, meetings
   reminders.py    idempotent reminder sweep
-  staff.py        applicant review, people, match approval, modules, reports
+  staff.py        applicants, people, match approval, modules, reports
   admin.py        account metrics, user audit, (de)activation, creating staff accounts
   routes.py       landing, dashboard, application edits, /healthz, cron endpoint
   storage.py      file uploads (Supabase Storage; local disk in tests)

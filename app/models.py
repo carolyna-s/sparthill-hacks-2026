@@ -172,9 +172,6 @@ class Application(db.Model):
     status = db.Column(db.String(12), default="draft", nullable=False, index=True)
     answers = db.Column(db.JSON, default=dict, nullable=False)  # {question_key: text}
     submitted_at = db.Column(db.DateTime)
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    reviewed_at = db.Column(db.DateTime)
-    staff_notes = db.Column(db.Text, default="")
 
     user = db.relationship("User", back_populates="application", foreign_keys=[user_id])
     cohort = db.relationship("Cohort")
@@ -224,7 +221,9 @@ class Match(db.Model):
     mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"))
     status = db.Column(db.String(10), default="proposed", nullable=False, index=True)
-    score = db.Column(db.Float, nullable=False)  # final score shown to staff
+    # Final score shown to staff. NULL: fails a hard filter (needs staff approval); the would-be
+    # score is score_breakdown["fit_if_compatible"].
+    score = db.Column(db.Float)
     score_breakdown = db.Column(db.JSON, default=dict, nullable=False)
     structured_score = db.Column(db.Float)  # hard-question features
     semantic_score = db.Column(db.Float)  # soft-answer embedding similarity

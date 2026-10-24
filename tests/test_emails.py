@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from app.extensions import db
-from app.models import Application, EmailLog, Match, Message, utcnow
+from app.models import EmailLog, Match, Message, utcnow
 from app.notify import email_unread_messages
 
 from .conftest import login
@@ -9,8 +9,6 @@ from .conftest import login
 
 def _released_match(client) -> Match:
     login(client, "staff.admin@example.org")
-    pending = db.session.query(Application).filter_by(status="submitted").one()
-    client.post(f"/staff/applications/{pending.id}", data={"decision": "accepted"})
     client.post("/staff/matching/propose-all")
     match = db.session.query(Match).filter_by(status="proposed").first()
     client.post(f"/staff/matches/{match.id}/approve")

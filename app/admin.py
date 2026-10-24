@@ -12,7 +12,7 @@ from . import matching, notify
 from .audit import record_change
 from .auth import change_password, role_required
 from .extensions import db
-from .models import (AgreementSignature, Answer, Application, Attendance, AuditLog, ConfigSuggestion, Event,
+from .models import (AgreementSignature, Answer, Attendance, AuditLog, ConfigSuggestion, Event,
                      Feedback, Match, MatchExclusion, MatchFeedback, MatchOverrideRequest, MatchingConfig,
                      Meeting, Message, ReminderLog, ROLES, Submission, User, utcnow)
 from .staff import DENY_REASONS
@@ -433,8 +433,6 @@ def delete_user(user_id: int):
 
     for model in (AgreementSignature, Answer, Attendance, ReminderLog, Submission):
         db.session.query(model).filter_by(user_id=user_id).delete(synchronize_session=False)
-    db.session.query(Application).filter_by(reviewed_by_id=user_id).update(
-        {"reviewed_by_id": None}, synchronize_session=False)
     db.session.query(Match).filter_by(decided_by_id=user_id).update(
         {"decided_by_id": None}, synchronize_session=False)
     db.session.query(MatchingConfig).filter_by(created_by_id=user_id).update(

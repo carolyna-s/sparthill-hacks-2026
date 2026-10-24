@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, status_badge, input_cls %}
-{% from "staff/_match.html" import why, profile_facts, denial, post with context %}
+{% from "staff/_match.html" import why, score_or_flag, profile_facts, denial, post with context %}
 {# One page, three uses: the full overview ("More info"), and the confirmation step for
    ?action=approve or ?action=reject. #}
 {% block content %}
@@ -10,7 +10,7 @@
 <h1 class="text-2xl font-semibold mt-1 mb-1">
   {% if action == 'approve' %}Approve {% elif action == 'reject' %}Reject {% endif %}{{ m.mentee.name }} → {{ m.mentor.name }}
   {{ status_badge(m.status) }}</h1>
-<p class="text-sm text-slate-500 mb-5">Score {{ m.score }} · proposed {{ m.proposed_at.strftime('%b %d') }}</p>
+<p class="text-sm text-slate-500 mb-5">{% if m.score is none %}{{ score_or_flag(none) }}{% else %}Score {{ m.score }}{% endif %} · proposed {{ m.proposed_at.strftime('%b %d') }}</p>
 
 <div class="grid md:grid-cols-3 gap-5">
   {% for role, u in [("Mentee", m.mentee), ("Mentor", m.mentor)] %}

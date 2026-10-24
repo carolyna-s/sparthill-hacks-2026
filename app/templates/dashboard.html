@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, csrf, status_badge %}
+{% from "_macros.html" import card, csrf, application_status_badge %}
 
 {% macro avatar(name, size="h-14 w-14 text-lg") %}
 <span class="{{ size }} shrink-0 rounded-full bg-brand-100 text-brand-700 font-semibold grid place-items-center">{{ name[:1]|upper }}</span>
@@ -39,8 +39,8 @@
           <div class="flex items-center gap-4 py-2">
             <span class="h-14 w-14 shrink-0 rounded-full border-2 border-dashed border-slate-300"></span>
             <div class="text-sm text-slate-500">
-              <p>No match yet. Staff will match you after your application is accepted.</p>
-              {% if application %}<p class="mt-1">Application: {{ status_badge(application.status) }}</p>{% endif %}
+              <p>No match yet. Staff will match you after your application is approved.</p>
+              {% if application %}<p class="mt-1">Application: {{ application_status_badge(application.status) }}</p>{% endif %}
             </div>
           </div>
         {% endif %}

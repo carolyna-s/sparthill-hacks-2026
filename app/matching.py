@@ -1,8 +1,7 @@
 """Score-based mentor ranking.
 
-Hard filters drop a pair outright: they must share at least one availability slot and one
-language. Blank languages count as English. A side with no availability yet (older profiles)
-isn't filtered on it.
+The hard filter drops a pair outright: they must share at least one availability slot. A side
+with no availability yet (older profiles) isn't filtered on it.
 
 Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
@@ -16,16 +15,21 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 - alumni: 1 if the mentee asked for a same-school mentor and the schools match.
 - text: how close the free-text answers are in meaning (app/embeddings.py), averaged over
   the text boxes both sides filled in; cosine similarity rescaled from SEMANTIC_RANGE to 0-1.
+- languages: a bonus only. Everyone is assumed to get by in English, so sharing another
+  language counts 1; sharing none (or only English) leaves it out of the score.
 
 A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
-it doesn't drag every score down. Text is different: a pair with no answers to compare (blank,
-or not embedded yet) leaves it out of the score entirely, weight included.
+it doesn't drag every score down. Text and languages are different: a pair with nothing to
+compare (no text embedded, no shared second language) leaves them out entirely, weight
+included, so they can only raise a score.
 
 Matching is one-to-one: each mentor takes one mentee. `assign` turns the scores into
 proposals with the Hungarian algorithm (the assignment with the highest total score). Each run
 covers only the pool: mentees and mentors with no approved or pending match. Every mentee is
 matched while free mentors last; a pair that fails a hard filter is used only when nothing
-compatible is left, and is flagged for staff. Pairs staff rejected (match_exclusion) are
+compatible is left, and is flagged for staff: its score is None (they can't actually meet, so
+a number would only inflate averages), with the would-be score kept as
+breakdown["fit_if_compatible"]. Flagged pairs head the staff queue. Pairs staff rejected (match_exclusion) are
 never proposed again, and neither is a pair whose match was ended or withdrawn; reopening the
 match is the way back. Deactivated accounts (user.is_active) are left out of the pool.
 
@@ -43,10 +47,10 @@ from .models import Application, Match, MatchExclusion, MatchOverrideRequest, Pr
 
 MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 
-HARD_FILTERS = ("availability", "languages")
-HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
+HARD_FILTERS = ("availability",)
 COVERAGE = ("development_areas", "goals")
 PREFERENCE = ("education_paths",)
+BASE_LANGUAGE = "English"  # assumed shared by everyone: only other shared languages score
 
 WEIGHTS = {
     "industry": 0.28,
@@ -54,7 +58,8 @@ WEIGHTS = {
     "goals": 0.16,
     "text": 0.20,
     "education_paths": 0.08,
-    "alumni": 0.08
+    "alumni": 0.08,
+    "languages": 0.10,  # bonus: counted only when the pair shares a non-English language
     }
 
 # Cosine similarities between OpenAI embeddings of short answers rarely go below ~0.2 even for
@@ -62,13 +67,13 @@ WEIGHTS = {
 # there are real answers to look at.
 SEMANTIC_RANGE = (0.2, 0.7)
 
-FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("industry", "school", "prefers_alumni")
+FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("languages", "industry", "school", "prefers_alumni")
 
 
 @dataclass
 class Candidate:
     mentor_id: int
-    score: float
+    score: float | None  # None: fails a hard filter (see breakdown["fit_if_compatible"])
     breakdown: dict = field(default_factory=dict)
 
 
@@ -76,8 +81,7 @@ def hard_filters(mentee: dict, mentor: dict) -> tuple[dict[str, list], list[str]
     """Shared values per hard filter, and the filters the pair shares nothing on."""
     overlap, failed = {}, []
     for dim in HARD_FILTERS:
-        default = HARD_FILTER_DEFAULTS.get(dim, [])
-        a, b = set(mentee.get(dim) or default), set(mentor.get(dim) or default)
+        a, b = set(mentee.get(dim) or []), set(mentor.get(dim) or [])
         shared = a & b
         if a and b and not shared:
             failed.append(dim)
@@ -119,6 +123,11 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
                 continue  # nothing to compare: leave text out of this pair's score
             sim = sum(sims.values()) / len(sims)
             shared = [f"{f.replace('_', ' ')} {round(100 * s)}%" for f, s in sims.items()]
+        elif dim == "languages":
+            shared = sorted((set(mentee.get(dim) or []) & set(mentor.get(dim) or [])) - {BASE_LANGUAGE})
+            if not shared:
+                continue  # English only, or nothing in common: no bonus, and no penalty either
+            sim = 1.0
         elif dim == "industry":
             wanted = (mentee.get("industry") or "").strip()
             shared = [mentor["industry"]] if _same(mentee, mentor, "industry") else []
@@ -144,7 +153,7 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
 
 def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, int],
                  limit: int | None = None, excluded: set[int] = frozenset()) -> list[Candidate]:
-    """Compatible mentors (sharing a time slot and language), best first.
+    """Compatible mentors (sharing a time slot), best first.
     mentors: {mentor_id: tags}, open_slots: {mentor_id: 1 if free, else 0},
     excluded: mentor ids staff rejected for this mentee."""
     ranked = []
@@ -174,7 +183,8 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
     never to propose. Every mentee gets a mentor while free mentors last. The penalties order
     the solver's goals: never a rejected pair, then as few pairs failing a hard filter as
     possible, then the highest total score. A pair that fails a hard filter is still matched
-    when nothing else is left, with breakdown["filters_failed"] naming what they don't share.
+    when nothing else is left, with breakdown["filters_failed"] naming what they don't share,
+    score None, and the would-be score in breakdown["fit_if_compatible"].
     """
     import numpy as np
     from scipy.optimize import linear_sum_assignment
@@ -193,7 +203,8 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
             breakdown["filters"] = overlap
             if failed:
                 breakdown["filters_failed"] = failed
-            pairs[i, j] = Candidate(mt, score, breakdown)
+                breakdown["fit_if_compatible"] = score
+            pairs[i, j] = Candidate(mt, None if failed else score, breakdown)
             weight[i, j] = score + (MISMATCH if failed else 0)
     picked = zip(*linear_sum_assignment(weight, maximize=True))
     return {rows[i]: pairs[i, j] for i, j in picked if (i, j) in pairs}
