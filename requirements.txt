@@ -21,3 +21,6 @@ pypdf==6.21.2
 
 # Embeddings of free-text answers for matching (app/embeddings.py)
 openai==3.37.0
+
+# Optimal one-to-one assignment (Hungarian algorithm) in app/matching.py
+scipy==1.18.1

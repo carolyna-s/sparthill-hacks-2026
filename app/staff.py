@@ -154,7 +154,9 @@ def match_review(match_id: int):
 @bp.post("/matching/propose-all")
 def propose_all():
     created = matching.propose_all()
-    flash(f"Proposed {len(created)} matches.", "ok")
+    left = len(matching.unmatched_mentee_ids())
+    flash(f"Proposed {len(created)} matches." + (f" {left} mentees couldn't be matched (no compatible "
+                                                 "mentor with an open slot)." if left else ""), "ok")
     return redirect(url_for("staff.matching_page"))
 
 
@@ -167,7 +169,7 @@ def propose_one():
     if choice is None:
         abort(409)  # mentor not accepted or at capacity
     db.session.add(Match(mentee_id=mentee_id, mentor_id=mentor_id, score=choice.score,
-                         score_breakdown=choice.breakdown))
+                         score_breakdown=choice.breakdown, rematch_round=matching.rematch_round(mentee_id)))
     db.session.commit()
     return redirect(url_for("staff.matching_page"))
 

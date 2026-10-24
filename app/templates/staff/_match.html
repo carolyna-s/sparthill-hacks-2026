@@ -2,10 +2,13 @@
 
 {# Why a pair scored what it did: shared hard filters, then per-dimension coverage. #}
 {% macro why(breakdown) %}
+  {% if breakdown.get('filters_failed') %}
+    <div class="text-xs font-medium text-red-700">No shared {{ breakdown.filters_failed|join(' or ') }}: no compatible mentor was left</div>
+  {% endif %}
   {% for dim, shared in (breakdown.get('filters') or {}).items() if shared %}
     <div class="text-xs text-slate-500">{{ dim }}: <span class="text-slate-700">{{ shared|join(', ') }}</span></div>
   {% endfor %}
-  {% for dim, d in breakdown.items() if dim != 'filters' %}
+  {% for dim, d in breakdown.items() if dim not in ('filters', 'filters_failed') %}
     <div class="text-xs text-slate-500">{{ dim.replace('_', ' ') }}: {{ (d.coverage * 100)|round|int }}%
       {% if d.shared %}<span class="text-slate-700">({{ d.shared|join(', ') }})</span>{% endif %}</div>
   {% endfor %}

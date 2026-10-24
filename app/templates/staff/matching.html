@@ -4,14 +4,17 @@
 {% block content %}
 <div class="flex justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Matching</h1>
-  <form method="post" action="{{ url_for('staff.propose_all') }}">{{ csrf() }}{{ btn("Auto-propose for all unmatched") }}</form>
+  <form method="post" action="{{ url_for('staff.propose_all') }}" class="text-right">{{ csrf() }}
+    {{ btn("Run matching (" ~ unmatched|length ~ " in pool)") }}
+    <p class="text-xs text-slate-500 mt-1">Unmatched and rejected mentees, with the mentors still free. Approved matches stay as they are.</p></form>
 </div>
 
 {% call card("Proposed — awaiting approval (" ~ proposed|length ~ ")") %}
 <table class="w-full text-sm">
   {% for m in proposed %}
   <tr class="border-t align-top">
-    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a></td>
+    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a>
+      {% if m.rematch_round > 1 %}<span class="ml-1 text-xs rounded px-1.5 py-0.5 bg-sky-100 text-sky-800">re-match #{{ m.rematch_round }}</span>{% endif %}</td>
     <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
     <td class="py-2">{{ why(m.score_breakdown) }}</td>
     <td class="py-2 text-right whitespace-nowrap">
@@ -31,7 +34,7 @@
     <table class="w-full text-sm">
       {% for c in rankings[u.id] %}
       <tr class="align-top">
-        <td class="py-1 w-48">{{ mentors[c.mentor_id].name }} <span class="text-xs text-slate-500">({{ slots[c.mentor_id] }} open)</span></td>
+        <td class="py-1 w-48">{{ mentors[c.mentor_id].name }}</td>
         <td class="py-1 w-16 font-semibold">{{ c.score }}</td>
         <td class="py-1">{{ why(c.breakdown) }}</td>
         <td class="py-1 text-right">
@@ -40,7 +43,7 @@
             {{ btn("Propose", "secondary") }}</form>
         </td>
       </tr>
-      {% else %}<tr><td class="text-slate-500">No mentors with open capacity.</td></tr>{% endfor %}
+      {% else %}<tr><td class="text-slate-500">No free mentor shares a time slot and language. Run matching to pair them with whoever is left.</td></tr>{% endfor %}
     </table>
   </div>
 {% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}

@@ -171,8 +171,6 @@ def _save_tags(user: User, step: int) -> None:
 
 def _save_availability(user: User) -> bool:
     _save_tags(user, 2)
-    if user.role == "mentor":
-        user.profile.capacity = max(1, min(5, int(request.form.get("capacity") or 1)))
     return True
 
 

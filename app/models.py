@@ -82,7 +82,7 @@ class Profile(db.Model):
     career_interests = db.Column(db.JSON, default=list, nullable=False)  # legacy; replaced by `industry`
     goals = db.Column(db.JSON, default=list, nullable=False)
     development_areas = db.Column(db.JSON, default=list, nullable=False)
-    capacity = db.Column(db.Integer, default=1, nullable=False)  # mentors: max active mentees
+    capacity = db.Column(db.Integer, default=1, nullable=False)  # unused: matching is one-to-one
 
     major = db.Column(db.String(120))
     concentration = db.Column(db.String(120))

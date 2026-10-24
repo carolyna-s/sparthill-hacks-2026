@@ -185,9 +185,14 @@ Claude returns, per candidate, through structured outputs:
 
 ### 4.6 Assignment
 
-Pairs are assigned best-first by final score within capacity, with a small load-balancing
-penalty (`final − λ·load/capacity`) so strong mentors don't fill up first. Switch to optimal
-assignment (Hungarian / min-cost flow) if greedy looks unfair at real cohort sizes. Weights,
+**Built:** matching is strictly one-to-one (each mentor takes one mentee; `profile.capacity` is
+no longer asked or used, so there's no load balancing). Pairs are assigned with the Hungarian
+algorithm (`scipy.optimize.linear_sum_assignment` in `app/matching.py`): the assignment with the
+highest total score. Every mentee is matched while free mentors last: the solver avoids pairs
+that fail a hard filter, but if nothing compatible is left it matches them anyway and flags the
+pair for staff (`score_breakdown.filters_failed`). Rejected pairs are never proposed again. Each
+run covers only the pool: mentees and mentors with no approved or pending match; approved
+matches are out of it for good, and each new proposal records its `rematch_round`. Weights,
 α, the experience gap, λ, K, and the context range are all in the active `matching_config`
 (versioned, set by backend).
 

@@ -70,18 +70,19 @@ def test_rank_skips_full_mentors_and_orders_by_score():
     assert [c.mentor_id for c in ranked] == [1, 2]
 
 
-def test_assign_respects_capacity():
-    mentees = {10: MENTEE, 11: MENTEE}
+def test_assign_is_one_to_one():
+    mentees = {10: MENTEE, 11: MENTEE, 12: MENTEE}
     mentors = {1: MENTEE, 2: {"development_areas": ["writing"]}}
-    result = assign(mentees, mentors, open_slots={1: 1, 2: 1})
+    result = assign(mentees, mentors)
+    assert len(result) == 2  # more mentees than mentors: one waits for the next run
     assert sorted(c.mentor_id for c in result.values()) == [1, 2]
 
 
 def test_propose_all_on_seed_data(app):
     created = matching.propose_all()
-    # 4 accepted mentees, 6 mentor slots: everyone gets a proposal, no one twice
+    # 4 accepted mentees, 4 mentors: everyone gets a proposal, no mentor twice
     assert len(created) == 4
-    assert len({m.mentee_id for m in created}) == 4
+    assert len({m.mentee_id for m in created}) == len({m.mentor_id for m in created}) == 4
     assert matching.unmatched_mentee_ids() == set()
     assert matching.propose_all() == []
 
@@ -106,3 +107,44 @@ def test_text_is_left_out_when_there_is_nothing_to_compare():
     mentor = {"industry": "Banking", "text_vectors": {}}  # not embedded (no key, or blank)
     score, breakdown = score_pair(mentee, mentor, weights)
     assert score == 100.0 and "text" not in breakdown
+
+
+def _fixed_scores(monkeypatch, table):
+    """Make score_pair return table[(mentee_name, mentor_name)], keyed via a "name" tag."""
+    monkeypatch.setattr(matching, "score_pair", lambda me, mt, weights=None: (table[me["name"], mt["name"]], {}))
+
+
+def test_assign_maximizes_the_total_not_the_best_pair_first(monkeypatch):
+    # Greedy takes A-X (90) first and leaves B with Y (10): total 100.
+    # The Hungarian assignment gives A-Y (80) + B-X (85): total 165.
+    _fixed_scores(monkeypatch, {("A", "X"): 90, ("A", "Y"): 80, ("B", "X"): 85, ("B", "Y"): 10})
+    result = assign({1: {"name": "A"}, 2: {"name": "B"}}, {10: {"name": "X"}, 20: {"name": "Y"}})
+    assert {me: c.mentor_id for me, c in result.items()} == {1: 20, 2: 10}
+
+
+def test_assign_prefers_pairs_that_pass_the_hard_filters(monkeypatch):
+    # B can only meet X (no shared time with Y), so A goes to Y even though A-X + B-Y scores higher.
+    _fixed_scores(monkeypatch, {("A", "X"): 99, ("A", "Y"): 40, ("B", "X"): 30, ("B", "Y"): 95})
+    mentees = {1: {"name": "A", "availability": ["Monday - morning", "Friday - morning"]},
+               2: {"name": "B", "availability": ["Monday - morning"]}}
+    mentors = {10: {"name": "X", "availability": ["Monday - morning"]},
+               20: {"name": "Y", "availability": ["Friday - morning"]}}
+    result = assign(mentees, mentors)
+    assert {me: c.mentor_id for me, c in result.items()} == {1: 20, 2: 10}
+    assert "filters_failed" not in result[1].breakdown
+
+
+def test_assign_still_matches_the_last_pair_when_no_compatible_mentor_is_left(monkeypatch):
+    _fixed_scores(monkeypatch, {("A", "X"): 10})
+    result = assign({1: {"name": "A", "availability": ["Monday - morning"], "languages": ["Spanish"]}},
+                    {10: {"name": "X", "availability": ["Friday - morning"], "languages": ["English"]}})
+    assert result[1].mentor_id == 10
+    assert result[1].breakdown["filters_failed"] == ["availability", "languages"]
+
+
+def test_assign_never_uses_a_rejected_pair(monkeypatch):
+    _fixed_scores(monkeypatch, {(a, b): 50 for a in "AB" for b in "XY"})
+    mentees, mentors = {1: {"name": "A"}, 2: {"name": "B"}}, {10: {"name": "X"}, 20: {"name": "Y"}}
+    result = assign(mentees, mentors, excluded={(1, 10)})
+    assert {me: c.mentor_id for me, c in result.items()} == {1: 20, 2: 10}
+    assert assign(mentees, {10: {"name": "X"}}, excluded={(1, 10)}).keys() == {2}
