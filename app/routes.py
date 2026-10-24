@@ -11,7 +11,7 @@ from flask_login import current_user, login_required
 from . import program
 from .extensions import csrf, db
 from .intake import Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields, signup_next_step
-from .models import Event, Match, utcnow
+from .models import Event, Match, Meeting, Submission, utcnow
 from .taxonomy import DAYS, PERIODS, TAXONOMY
 
 bp = Blueprint("main", __name__)
@@ -37,10 +37,14 @@ def dashboard():
                .filter(Match.status == "approved",
                        (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id))
                .all())
+    meetings = program.meetings_for(current_user)
+    upcoming = sorted([("meeting", mt.starts_at, mt) for mt in meetings if mt.starts_at >= utcnow() - timedelta(hours=1)]
+                      + [("module", e.starts_at, e) for e in program.upcoming_modules()],
+                      key=lambda row: row[1])[:5]
     return render_template("dashboard.html", application=current_user.application, matches=matches,
-                           upcoming=program.upcoming_events(), todo=program.todo_for(current_user),
+                           upcoming=upcoming, todo=program.todo_for(current_user),
                            Personality_Questions_Data=Personality_Questions_Data,
-                           cal=_month_calendar())
+                           cal=_month_calendar(meetings))
 
 
 @bp.route("/dashboard/application", methods=["GET", "POST"])
@@ -120,16 +124,31 @@ def update_application():
     return redirect(url_for("main.update_application"))
 
 
-def _month_calendar() -> dict:
-    """This month as weeks of day numbers (0 = padding), with the events falling on each day."""
+def _month_calendar(meetings: list[Meeting]) -> dict:
+    """This month as weeks of day numbers (0 = padding), with what falls on each day: module sessions,
+    pre-/post-work due dates (mentees only), and the user's meetings. Each item is (kind, label, url)."""
     today = utcnow().date()
     start = today.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1)
+    dated: list[tuple] = []
+    for e in db.session.query(Event).order_by(Event.starts_at):
+        url = url_for("program.module", event_id=e.id)
+        dated.append((e.starts_at, "module", e.title, url))
+        if current_user.role == "mentee":
+            for kind in Submission.KINDS:
+                due = getattr(e, f"{kind}_due")
+                if getattr(e, f"{kind}_prompt") and due:
+                    dated.append((due, "due", f"{kind.replace('work', '-work').capitalize()} due: {e.title}", url))
+    for mt in meetings:
+        other = mt.match.other(current_user)
+        dated.append((mt.starts_at, "meeting", f"Meeting with {other.name} at {mt.starts_at:%I:%M %p}",
+                      url_for("program.messages", match_id=mt.match_id)))
     by_day: dict[int, list] = {}
-    for e in db.session.query(Event).filter(Event.starts_at >= start, Event.starts_at < end).order_by(Event.starts_at):
-        by_day.setdefault(e.starts_at.day, []).append(e)
+    for when, kind, label, url in sorted(dated, key=lambda row: row[0]):
+        if start <= when.date() < end:
+            by_day.setdefault(when.day, []).append((kind, label, url))
     weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(today.year, today.month)
-    return {"title": today.strftime("%B %Y"), "today": today.day, "weeks": weeks, "events": by_day}
+    return {"title": today.strftime("%B %Y"), "today": today.day, "weeks": weeks, "days": by_day}
 
 
 @bp.get("/healthz")

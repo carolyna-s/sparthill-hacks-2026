@@ -35,6 +35,37 @@ def create_app(overrides: dict | None = None) -> Flask:
     def inject_taxonomy():
         return {"taxonomy": TAXONOMY}
 
+    @app.before_request
+    def touch_last_seen():
+        """Record activity for "last seen" on message threads, writing at most once a minute."""
+        from datetime import timedelta
+
+        from flask_login import current_user
+
+        from .models import utcnow
+
+        if current_user.is_authenticated:
+            now = utcnow()
+            if current_user.last_seen_at is None or now - current_user.last_seen_at > timedelta(minutes=1):
+                current_user.last_seen_at = now
+                db.session.commit()
+
+    @app.template_filter("ago")
+    def ago(when):
+        """'just now', '5 min ago', '3 hr ago', 'yesterday', or a date."""
+        from .models import utcnow
+
+        secs = (utcnow() - when).total_seconds()
+        if secs < 60:
+            return "just now"
+        if secs < 3600:
+            return f"{int(secs // 60)} min ago"
+        if secs < 86400:
+            return f"{int(secs // 3600)} hr ago"
+        if secs < 2 * 86400:
+            return "yesterday"
+        return when.strftime("%b %d")
+
     @app.cli.command("send-reminders")
     def send_reminders_cmd():
         """Email everyone with something due (run on a schedule)."""
@@ -54,7 +85,7 @@ def create_app(overrides: dict | None = None) -> Flask:
 
     @app.cli.command("seed")
     def seed_cmd():
-        """Fill the database with demo users, a cohort, and events."""
+        """Fill the database with demo users, a cohort, and a sample module."""
         from .seed import seed
 
         seed()

@@ -150,15 +150,12 @@ def seed() -> None:
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
 
     now = utcnow().replace(minute=0, second=0, microsecond=0)
-    db.session.add_all([
-        Event(cohort_id=cohort.id, title="Kickoff: Setting Goals", starts_at=now + timedelta(days=2),
-              location="Zoom", checkin_code="KICK01",
-              prework_prompt="Write down three things you want out of this program.",
-              prework_due=now + timedelta(days=1, hours=12),
-              postwork_prompt="Share your 90-day goal with your mentor and summarize their feedback.",
-              postwork_due=now + timedelta(days=9)),
-        Event(cohort_id=cohort.id, title="Networking Workshop", starts_at=now + timedelta(days=16),
-              location="Community Center, Room 2", checkin_code="NET02",
-              prework_prompt="Draft a 30-second introduction.", prework_due=now + timedelta(days=15)),
-    ])
+    db.session.add(Event(
+        cohort_id=cohort.id, title="Updating your Resume", starts_at=now + timedelta(days=3),
+        location="Zoom", checkin_code="RES01",
+        description="Turn your resume into a one-page story of your strongest work, then review it with your mentor.",
+        prework_prompt="Upload your current resume and list two roles you'd like to apply for.",
+        prework_due=now + timedelta(days=1, hours=12),
+        postwork_prompt="Upload your revised resume and note the top three changes your mentor suggested.",
+        postwork_due=now + timedelta(days=10)))
     db.session.commit()

@@ -6,6 +6,7 @@
 {% endmacro %}
 
 {% block content %}
+{% set dot = {"meeting": "bg-emerald-500", "module": "bg-gold-400", "due": "bg-red-400"} %}
 <h1 class="text-2xl font-bold tracking-tight text-brand-950 mb-5">Welcome, {{ current_user.name.split()[0] }}</h1>
 <div class="grid lg:grid-cols-3 gap-5 items-start">
   <div class="lg:col-span-2">
@@ -45,13 +46,15 @@
     {% endcall %}
     {% endif %}
 
+    {% if current_user.role == "mentee" %}
     {% call card("To do") %}
       {% for e, kind in todo %}
-        <a href="{{ url_for('program.event', event_id=e.id) }}" class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 -mx-3 text-sm hover:bg-slate-50">
-          <span><span class="font-medium">{{ kind|capitalize }}</span> for {{ e.title }}</span>
+        <a href="{{ url_for('program.module', event_id=e.id) }}" class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 -mx-3 text-sm hover:bg-slate-50">
+          <span><span class="font-medium">{{ kind.replace('work', '-work')|capitalize }}</span> for {{ e.title }}</span>
           <span class="text-slate-500 shrink-0">due {{ e[kind ~ '_due'].strftime('%b %d') }}</span></a>
       {% else %}<p class="text-sm text-slate-500">Nothing due.</p>{% endfor %}
     {% endcall %}
+    {% endif %}
 
     {% call card("Helpful links & resources") %}
       <ul class="text-sm space-y-2">
@@ -73,30 +76,43 @@
         {% for week in cal.weeks %}{% for day in week %}
           {% if day == 0 %}<span></span>
           {% else %}
-            {% set evs = cal.events.get(day, []) %}
-            {% set cls = "bg-brand-600 text-white font-semibold" if day == cal.today else "bg-brand-50 text-brand-700 font-medium" if evs else "text-slate-700" %}
-            {% if evs %}
-              <a href="{{ url_for('program.event', event_id=evs[0].id) }}" title="{{ evs|map(attribute='title')|join(', ') }}"
+            {% set items = cal.days.get(day, []) %}
+            {% set cls = "bg-brand-600 text-white font-semibold" if day == cal.today else "bg-brand-50 text-brand-700 font-medium" if items else "text-slate-700" %}
+            {% if items %}
+              {% set kinds = items|map(attribute=0)|unique|list %}
+              <a href="{{ items[0][2] }}" title="{{ items|map(attribute=1)|join('\n') }}"
                  class="relative mx-auto h-8 w-8 rounded-full grid place-items-center hover:ring-2 hover:ring-brand-300 {{ cls }}">{{ day }}
-                <span class="absolute bottom-0.5 h-1 w-1 rounded-full {{ 'bg-white' if day == cal.today else 'bg-gold-400' }}"></span></a>
+                <span class="absolute bottom-0.5 flex gap-0.5">
+                  {% for k in kinds %}<span class="h-1 w-1 rounded-full {{ dot[k] }}"></span>{% endfor %}
+                </span></a>
             {% else %}
               <span class="mx-auto h-8 w-8 rounded-full grid place-items-center {{ cls }}">{{ day }}</span>
             {% endif %}
           {% endif %}
         {% endfor %}{% endfor %}
       </div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-slate-500">
+        <span class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full {{ dot.meeting }}"></span>Meeting</span>
+        <span class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full {{ dot.module }}"></span>Module</span>
+        {% if current_user.role == "mentee" %}<span class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full {{ dot.due }}"></span>Due</span>{% endif %}
+      </div>
     {% endcall %}
 
-    {% call card("Upcoming events") %}
-      {% for e in upcoming %}
-        <a href="{{ url_for('program.event', event_id=e.id) }}" class="flex gap-3 rounded-lg px-3 py-2 -mx-3 hover:bg-slate-50">
-          <span class="w-11 shrink-0 rounded-lg bg-brand-50 text-brand-700 text-center py-1 leading-tight">
-            <span class="block text-[10px] font-semibold uppercase">{{ e.starts_at.strftime('%b') }}</span>
-            <span class="block text-base font-bold">{{ e.starts_at.day }}</span></span>
-          <span class="min-w-0 text-sm"><span class="block font-medium truncate">{{ e.title }}</span>
-            <span class="text-slate-500">{{ e.starts_at.strftime('%a, %H:%M') }}{% if e.location %} · {{ e.location }}{% endif %}</span></span>
+    {% call card("Upcoming") %}
+      {% for kind, when, x in upcoming %}
+        {% if kind == "meeting" %}
+          {% set href, title, sub = url_for('program.messages', match_id=x.match_id), "Meeting with " ~ x.match.other(current_user).name, x.note %}
+        {% else %}
+          {% set href, title, sub = url_for('program.module', event_id=x.id), x.title, x.location %}
+        {% endif %}
+        <a href="{{ href }}" class="flex gap-3 rounded-lg px-3 py-2 -mx-3 hover:bg-slate-50">
+          <span class="w-11 shrink-0 rounded-lg {{ 'bg-emerald-50 text-emerald-700' if kind == 'meeting' else 'bg-brand-50 text-brand-700' }} text-center py-1 leading-tight">
+            <span class="block text-[10px] font-semibold uppercase">{{ when.strftime('%b') }}</span>
+            <span class="block text-base font-bold">{{ when.day }}</span></span>
+          <span class="min-w-0 text-sm"><span class="block font-medium truncate">{{ title }}</span>
+            <span class="text-slate-500">{{ when.strftime('%a, %I:%M %p') }}{% if sub %} · {{ sub }}{% endif %}</span></span>
         </a>
-      {% else %}<p class="text-sm text-slate-500">No upcoming events.</p>{% endfor %}
+      {% else %}<p class="text-sm text-slate-500">Nothing coming up.</p>{% endfor %}
     {% endcall %}
   </div>
 </div>

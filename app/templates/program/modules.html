@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% macro item(href, label, title, meta, status=None) %}
+<a href="{{ href }}" class="flex items-center gap-4 px-5 py-3 border-t border-slate-100 hover:bg-slate-50">
+  <span class="w-20 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ label }}</span>
+  <span class="min-w-0 flex-1">
+    <span class="block text-sm font-medium text-slate-800 truncate">{{ title }}</span>
+    {% if meta %}<span class="block text-xs text-slate-500">{{ meta }}</span>{% endif %}
+  </span>
+  {% if status == "done" %}<span class="text-xs font-medium text-emerald-700 shrink-0">✓ Submitted</span>
+  {% elif status == "todo" %}<span class="text-xs font-medium text-gold-700 shrink-0">To do</span>
+  {% elif status %}<span class="text-xs font-medium text-slate-600 shrink-0">{{ status }}</span>{% endif %}
+</a>
+{% endmacro %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-5">
+  <h1 class="text-2xl font-bold tracking-tight text-brand-950">Modules</h1>
+  {% if current_user.is_staff %}<a href="{{ url_for('staff.new_event') }}" class="text-sm bg-brand-600 text-white rounded-lg px-3 py-1.5">New module</a>{% endif %}
+</div>
+
+<div class="space-y-4">
+{% for e in modules %}
+  {% set href = url_for('program.module', event_id=e.id) %}
+  <details open class="group bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+    <summary class="list-none flex items-center gap-3 px-5 py-3 bg-slate-100 cursor-pointer [&::-webkit-details-marker]:hidden">
+      <svg class="h-4 w-4 text-slate-500 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      <span class="font-semibold text-slate-900 flex-1">{{ e.title }}</span>
+      <span class="text-sm text-slate-500">{{ e.starts_at.strftime('%b %d') }}</span>
+    </summary>
+    {% if e.description %}{{ item(href, "Overview", e.description, None) }}{% endif %}
+    {% for kind in ['prework', 'postwork'] if e[kind ~ '_prompt'] %}
+      {% if kind == 'postwork' %}{{ item(href, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'), e.location) }}{% endif %}
+      {% set due = e[kind ~ '_due'] %}
+      {{ item(href, kind.replace('work', '-work'), e[kind ~ '_prompt'], "Due " ~ due.strftime('%b %d, %I:%M %p') if due else None,
+              ("done" if (e.id, kind) in subs else "todo") if current_user.role == 'mentee'
+              else "%d/%d mentees submitted"|format(counts.get((e.id, kind), 0), mentees|length) if current_user.role == 'mentor' and mentees
+              else None) }}
+    {% endfor %}
+    {% if not e.postwork_prompt %}{{ item(href, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'), e.location) }}{% endif %}
+  </details>
+{% else %}
+  <p class="text-sm text-slate-500">No modules yet.</p>
+{% endfor %}
+</div>
+{% endblock %}

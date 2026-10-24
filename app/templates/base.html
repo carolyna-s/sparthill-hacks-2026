@@ -43,12 +43,13 @@
           <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-brand-700">Applicants</a>
           <a href="{{ url_for('staff.people') }}" class="text-slate-600 hover:text-brand-700">People</a>
           <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-brand-700">Matching</a>
+          <a href="{{ url_for('program.modules') }}" class="text-slate-600 hover:text-brand-700">Modules</a>
           <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-brand-700">Reports</a>
         {% else %}
           <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
-          <a href="{{ url_for('program.matches') }}" class="text-slate-600 hover:text-brand-700">Messages</a>
+          <a href="{{ url_for('program.modules') }}" class="text-slate-600 hover:text-brand-700">Modules</a>
+          <a href="{{ url_for('program.inbox') }}" class="text-slate-600 hover:text-brand-700">Messages</a>
         {% endif %}
-        <a href="{{ url_for('program.events') }}" class="text-slate-600 hover:text-brand-700">Events</a>
         <details class="ml-auto relative group">
           <summary class="list-none flex items-center gap-2 cursor-pointer rounded-full border border-slate-200 pl-3 pr-1 py-1 hover:border-brand-300 [&::-webkit-details-marker]:hidden">
             <span class="font-medium text-slate-700">{{ current_user.name }}</span>

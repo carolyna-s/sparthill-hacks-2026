@@ -52,7 +52,7 @@ any migration there.
 ```bash
 export FLASK_APP=wsgi              # Windows PowerShell: $env:FLASK_APP="wsgi"
 flask db upgrade                   # creates/updates tables in whichever DB .env points at
-flask seed                         # demo cohort, agreement, events, staff, mentors, mentees
+flask seed                         # demo cohort, agreement, a module, staff, mentors, mentees
 ```
 
 `flask seed` does nothing if the database already has data.
@@ -78,8 +78,8 @@ All demo accounts use the password `password123`.
 
 Quick tour:
 1. As **staff**: go to **Applicants** and accept Morgan, then **Matching** → *Auto-propose* → approve.
-2. As **jordan.kim**: open your match and send a message, open the Kickoff event, submit
-   prework, and check in with code `KICK01`.
+2. As jordan.kim's mentor: open **Messages** and schedule a meeting. As **jordan.kim**: see it on the
+   dashboard calendar, open **Modules** → *Updating your Resume*, submit pre-work, and check in with code `RES01`.
 3. As **staff**: open **Reports** to see the attendance, submission, and rating counts.
 
 ## Everyday commands
@@ -107,9 +107,9 @@ app/
   intake.py       profiles, applications, digital agreements
   matching.py     scoring, ranking, capacity-aware assignment
   embeddings.py   OpenAI embeddings of free-text answers, for the text part of the score
-  program.py      events, prework/postwork, check-ins, messaging, feedback
+  program.py      modules, prework/postwork, check-ins, messaging, meetings, feedback
   reminders.py    idempotent reminder sweep
-  staff.py        applicant review, match approval, events, reports
+  staff.py        applicant review, match approval, modules, reports
   routes.py       landing, dashboard, /healthz, cron endpoint
   storage.py      file uploads (local disk or S3)
   notify.py       email (console or SES)
