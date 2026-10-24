@@ -135,7 +135,7 @@
         <textarea name="{{ key }}" rows="3" class="{{ input_cls() }}" required {{ 'disabled' if locked_answers }}>{{ application.answers.get(key, '') if application else '' }}</textarea>
       {% endcall %}
     {% endfor %}
-    {% if locked_answers %}<p class="text-xs text-slate-500">Your application is {{ application.status }}, so its answers can't be changed.</p>{% endif %}
+    {% if locked_answers %}<p class="text-xs text-slate-500">Your application is {{ {'accepted': 'approved', 'rejected': 'rejected'}.get(application.status, application.status) }}, so its answers can't be changed.</p>{% endif %}
   {% endcall %}
   {% endif %}
 

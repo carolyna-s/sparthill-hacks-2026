@@ -1,4 +1,4 @@
-"""Staff dashboard: applicant review, participant dashboards, match approval, modules, and
+"""Staff dashboard: applicants, participant dashboards, match approval, modules, and
 aggregate reporting."""
 
 from __future__ import annotations
@@ -64,103 +64,29 @@ def denials_for(match_ids) -> dict[int, list[MatchFeedback]]:
 
 @bp.get("/")
 def overview():
-    by_status = dict(db.session.query(Application.status, func.count(Application.id))
-                     .group_by(Application.status).all())
-    return render_template("staff/overview.html", by_status=by_status, report=report_data(),
+    applicant_count = (db.session.query(Application)
+                       .filter(Application.status != "draft").count())
+    return render_template("staff/overview.html", applicant_count=applicant_count, report=report_data(),
                            proposed=db.session.query(Match).filter_by(status="proposed").count())
 
 
-# --- applicant review ------------------------------------------------------------
+# --- applicants ------------------------------------------------------------------
 
 @bp.get("/applications")
 def applications():
-    status = request.args.get("status", "pending")
-    if status not in ("pending", "all"):
-        status = "pending" if status == "submitted" else "all"
-    q = db.session.query(User).filter(User.role.in_(("mentee", "mentor")))
-    if status == "pending":
-        q = q.join(Application, Application.user_id == User.id).filter(Application.status == "submitted")
-    users = q.order_by(User.name).all()
+    users = (db.session.query(User)
+             .join(Application, Application.user_id == User.id)
+             .filter(User.role.in_(("mentee", "mentor")), Application.status == "accepted")
+             .order_by(User.name).all())
     rows = [dashboard_for(user) for user in users]
-    events = db.session.query(Event).filter(Event.starts_at <= utcnow()).all()
-    attendance = {
-        (user_id, event_id)
-        for user_id, event_id in db.session.query(Attendance.user_id, Attendance.event_id)
-        .filter(Attendance.user_id.in_([user.id for user in users]))
-    } if users else set()
-    for row in rows:
-        user = row["user"]
-        eligible_events = [event for event in events if event.starts_at >= user.created_at]
-        attended_count = sum((user.id, event.id) in attendance for event in eligible_events)
-        row["attendance_rate"] = (
-            f"{attended_count / len(eligible_events) * 100:.0f}%" if eligible_events else "N/A"
-        )
-    return render_template(
-        "staff/applications.html", rows=rows, status=status,
-        pending_count=db.session.query(Application).filter_by(status="submitted").count(),
-        q=request.args.get("q", "").strip(),
-    )
+    return render_template("staff/applications.html", rows=rows, q=request.args.get("q", "").strip())
 
 
-@bp.post("/applications/quick-accept")
-def quick_accept_applications():
-    pending = db.session.query(Application).filter_by(status="submitted").all()
-    if not pending:
-        flash("There are no pending applications to accept.", "error")
-        return redirect(url_for("staff.applications", status="pending"))
-    now = utcnow()
-    for application in pending:
-        application.status = "accepted"
-        application.reviewed_by_id = current_user.id
-        application.reviewed_at = now
-    record_change("applications_bulk_accepted",
-                  f"Accepted all {len(pending)} applications that were pending approval.")
-    db.session.commit()
-    flash(f"Accepted {len(pending)} pending application(s).", "ok")
-    return redirect(url_for("staff.applications", status="pending"))
-
-
-@bp.route("/applications/<int:app_id>", methods=["GET", "POST"])
+@bp.get("/applications/<int:app_id>")
 def application(app_id: int):
     a = db.get_or_404(Application, app_id)
-    if request.method == "POST":
-        decision = request.form.get("decision")
-        if decision not in ("accepted", "rejected"):
-            abort(400)
-        before = a.status
-        a.status, a.reviewed_by_id, a.reviewed_at = decision, current_user.id, utcnow()
-        a.staff_notes = request.form.get("staff_notes", "")
-        record_change("application_review",
-                      f"Reviewed {a.user.name}'s application: status {before} → {decision}; staff notes updated.",
-                      target_user_id=a.user_id)
-        db.session.commit()
-        _offer_undo(f"{a.user.name}: {decision}.", url_for("staff.undo_application", app_id=a.id),
-                    status=before)
-        return redirect(url_for("staff.applications", status="pending" if before == "submitted" else "all"))
     return render_template("staff/application.html", a=a,
                            Personality_Questions_Data=Personality_Questions_Data[a.user.role])
-
-
-@bp.post("/applications/<int:app_id>/undo")
-def undo_application(app_id: int):
-    """Put an application back to the status it had before the last decision."""
-    a = db.get_or_404(Application, app_id)
-    status = request.form.get("status")
-    if status not in ("draft", "submitted", "accepted", "rejected"):
-        abort(400)
-    if status != "accepted" and a.status == "accepted" and db.session.query(Match).filter(
-            (Match.mentee_id == a.user_id) | (Match.mentor_id == a.user_id),
-            Match.status.in_(("proposed", "released", "approved"))).first():
-        flash(f"{a.user.name} is already in a match. Cancel or end it before undoing the acceptance.", "error")
-    else:
-        previous_status = a.status
-        a.status = status
-        record_change("application_review_undo",
-                      f"Restored {a.user.name}'s application status from {previous_status} to {status}.",
-                      target_user_id=a.user_id)
-        db.session.commit()
-        flash(f"Undone: {a.user.name} is {status} again.", "ok")
-    return redirect(url_for("staff.application", app_id=a.id))
 
 
 # --- participant dashboards --------------------------------------------------------
@@ -178,7 +104,7 @@ def dashboard_for(user: User) -> dict:
 
 @bp.get("/people")
 def people():
-    return redirect(url_for("staff.applications", status="all", **request.args))
+    return redirect(url_for("staff.applications", **request.args))
 
 
 @bp.get("/people/<int:user_id>")

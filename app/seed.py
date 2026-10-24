@@ -144,17 +144,14 @@ def _user(name: str, role: str) -> User:
     return u
 
 
-def _activity(reviewer: User) -> None:
-    """Spread out sign-up and login times and mark accepted applications reviewed, so the
-    admin pages have history to show. Jamie Torres and Morgan Diaz have never logged in."""
+def _activity() -> None:
+    """Spread out sign-up and login times. Jamie Torres and Morgan Diaz have never logged in."""
     now = utcnow()
     for i, u in enumerate(db.session.query(User).order_by(User.id)):
         u.created_at = now - timedelta(days=30 - 2 * i)
         if u.email not in ("jamie.torres@example.org", "morgan.diaz@example.org"):
             u.last_login_at = now - timedelta(hours=5 * i + 1)
             u.last_seen_at = u.last_login_at + timedelta(minutes=20)
-        if u.application and u.application.status == "accepted":
-            u.application.reviewed_by_id, u.application.reviewed_at = reviewer.id, now - timedelta(days=3)
 
 
 def seed_pool() -> int:
@@ -175,7 +172,7 @@ def seed_pool() -> int:
             continue
         u.profile = Profile(**profile)
         u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
-                                    reviewed_at=utcnow(), answers={})
+                                    answers={})
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
         added += 1
@@ -193,7 +190,7 @@ def seed() -> None:
                           body="I agree to attend scheduled sessions, complete prework and postwork, "
                                "communicate respectfully, and keep mentor-mentee conversations confidential.")
     db.session.add_all([cohort, agreement])
-    staff = _user("Staff Admin", "staff")
+    _user("Staff Admin", "staff")
     _user("Backend Admin", "backend")
     _user("Jamie Torres", "staff")  # never logged in
     _user("Dana Whitfield", "staff").is_active = False
@@ -214,12 +211,10 @@ def seed() -> None:
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
 
-    for i, (name, interests, goals, areas) in enumerate(MENTEES):
+    for name, interests, goals, areas in MENTEES:
         u = _user(name, "mentee")
         u.profile = Profile(interests=", ".join(interests), goals=goals, development_areas=areas, **MATCHING[name])
-        # Leave the last mentee pending so the review queue has something in it.
-        status = "submitted" if i == len(MENTEES) - 1 else "accepted"
-        u.application = Application(cohort_id=cohort.id, status=status, submitted_at=utcnow(),
+        u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
                                     answers={
                                         "mentorship_style": "Clear communication and actionable feedback.",
                                         "career_advice": "How to choose opportunities that build my skills.",
@@ -228,7 +223,7 @@ def seed() -> None:
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
 
     db.session.flush()
-    _activity(staff)
+    _activity()
 
     now = utcnow().replace(minute=0, second=0, microsecond=0)
     db.session.add(Event(

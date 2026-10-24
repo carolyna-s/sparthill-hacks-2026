@@ -24,8 +24,8 @@ created by an admin.
      PDF can be uploaded to pre-fill suggestions.
    - **Agreements**: sign each active agreement for your role by typing your name.
    - **Application**: answer the application questions and submit.
-3. **Wait for review.** Staff accept or reject the application. Only accepted people go into
-   the matching pool. You can still edit your submitted application from the dashboard
+3. **Submit.** A completed application is accepted automatically and added to the matching pool.
+   You can still edit your submitted application from the dashboard
    (*Submitted Application* → `/dashboard/application`).
 4. **Get matched.** Staff propose and approve pairs. Matching is one-to-one, and mentees and
    mentors don't choose each other. Once a pair is approved it shows under **Your match** /
@@ -53,11 +53,9 @@ created by an admin.
 
 Staff land on **Dashboard** (Staff Overview) and work through the cycle from the top nav:
 
-- **Applicants:** the combined participant and application list. Read each application and accept
-  or reject it (with notes). The table has Name, Role, Application, Attendance_Rate, Match,
-  Submitted, and Acceptance Status columns and
-  pending/all filters, live search, sortable columns, quick accept/reject controls, and a confirmed
-  bulk accept action for every pending application. The last decision can be undone.
+- **Applicants:** a searchable, sortable list of submitted applications and participant details.
+  Staff can view application responses, attendance, and match information; application decisions
+  are automatic at submission.
 - **Matching:** *Auto-propose* runs the engine over everyone accepted and unmatched, or propose
   for one mentee. Staff **approve** to release a match to the mentee for confirmation, **reject**
   (needs a reason; the pair is never proposed again), or cancel proposals. Reviews started from

@@ -241,7 +241,8 @@ def test_mentee_intake_flow(client):
     assert client.get("/dashboard").headers["Location"].endswith("/apply")
     assert client.post("/apply", data={"action": "submit"}).headers["Location"].endswith("/dashboard")
     db.session.refresh(user.application)
-    assert user.application.status == "submitted"  # free-response answers are optional
+    assert user.application.status == "accepted"  # submissions are automatically matching-eligible
+    assert user.id in matching.accepted_profiles("mentee")
     assert client.get("/dashboard").status_code == 200
 
 
@@ -296,9 +297,7 @@ def test_staff_pages_are_staff_only(client):
 
 def test_review_match_and_message(client):
     login(client, "staff.admin@example.org")
-    pending = db.session.query(Application).filter_by(status="submitted").one()
-    client.post(f"/staff/applications/{pending.id}", data={"decision": "accepted"})
-    assert pending.status == "accepted"
+    assert db.session.query(Application).filter_by(status="submitted").count() == 0
 
     client.post("/staff/matching/propose-all")
     proposed = db.session.query(Match).filter_by(status="proposed").all()
@@ -681,43 +680,25 @@ def test_ended_pair_is_not_proposed_again(client):
     assert pair not in proposed  # ...but not with each other
 
 
-def test_undo_application_decision(client):
-    login(client, "staff.admin@example.org")
-    pending = db.session.query(Application).filter_by(status="submitted").one()
-    client.post(f"/staff/applications/{pending.id}", data={"decision": "rejected"})
-    assert pending.status == "rejected"
-    assert b"Undo" in client.get("/staff/applications").data
-    client.post(f"/staff/applications/{pending.id}/undo", data={"status": "submitted"})
-    assert pending.status == "submitted"
-
-
-
 def test_rematch_keeps_approved_and_reruns_only_rejected_and_unmatched(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
-    ids = {u.email.split("@")[0]: u.id for u in db.session.query(User)}
     proposed = db.session.query(Match).filter_by(status="proposed").all()
-    assert {(m.mentee_id, m.mentor_id) for m in proposed} >= {(ids["jordan.kim"], ids["priya.raman"]),
-                                                              (ids["riley.chen"], ids["sam.okafor"])}
-    deny = [m for m in proposed if m.mentee_id in (ids["jordan.kim"], ids["riley.chen"])]
-    keep = [m for m in proposed if m not in deny]
+    assert len(proposed) == 4
+    deny, keep = proposed[:2], proposed[2:]
     for m in keep:
         client.post(f"/staff/matches/{m.id}/approve")
     for m in deny:
         client.post(f"/staff/matches/{m.id}/reject", data={"reason": "fit_concern", "comment": "Not a fit."})
     approved = {(m.mentee_id, m.mentor_id) for m in keep}
 
-    # Pool: Jordan and Riley, with Priya and Sam free. Neither pair shares a time slot, and the
-    # rejected pairs are out, so they're matched anyway and flagged.
     client.post("/staff/matching/propose-all")
     assert {(m.mentee_id, m.mentor_id) for m in db.session.query(Match).filter_by(status="released")} == approved
     redo = {m.mentee_id: m for m in db.session.query(Match).filter_by(status="proposed")}
-    assert {me: m.mentor_id for me, m in redo.items()} == {ids["jordan.kim"]: ids["sam.okafor"],
-                                                          ids["riley.chen"]: ids["priya.raman"]}
-    assert all(m.rematch_round == 2 and m.score_breakdown["filters_failed"] == ["availability"]
-               for m in redo.values())
+    assert set(redo) == {m.mentee_id for m in deny}
+    assert all(m.rematch_round == 2 for m in redo.values())
     page = client.get("/staff/matching").data
-    assert b"re-match #2" in page and b"No shared availability" in page
+    assert b"re-match #2" in page
 
 def test_staff_people_dashboards(client):
     login(client, "staff.admin@example.org")
@@ -1098,48 +1079,46 @@ def test_admin_delete_account_removes_owned_and_matched_data(client):
     assert db.session.get(User, admin.id) is not None
 
 
-def test_staff_applicants_have_pending_all_filters_and_sorting(client):
+def test_staff_applicants_are_read_only_and_sortable(client):
     login(client, "staff.admin@example.org")
-    pending = db.session.query(Application).filter_by(status="submitted").one()
+    application = db.session.query(Application).filter_by(status="accepted").first()
     page = client.get("/staff/applications")
     assert page.status_code == 200
-    assert b"Pending Approval" in page.data
-    assert b"All" in page.data
+    assert b"Pending Approval" not in page.data
+    assert b"Quick accept" not in page.data
+    assert b"Accept</button>" not in page.data
+    assert b"Reject</button>" not in page.data
+    assert b"Acceptance Status" not in page.data
+    assert b">Accepted</span>" in page.data
     assert b"data-sort-key=\"name\"" in page.data
-    assert b"data-sort-key=\"acceptance_status\"" in page.data
-    assert b"Attendance_Rate" in page.data
+    assert b"Attendance_Rate" not in page.data
     assert b"data-sort-select" in page.data
-    assert b"Acceptance Status" in page.data
-    assert b"Attendance_Rate" in page.data
     assert b"data-sort-key=\"application\"" in page.data
     assert b"data-sort-key=\"match\"" in page.data
     assert b"data-sort-key=\"submitted\"" in page.data
-    assert b"Quick accept all pending" in page.data
     assert b"Other sort fields" not in page.data
     assert b'data-sort-list="staff-applicants" data-sort-select' not in page.data
-    assert b"Warning: this will approve every application currently pending approval." in page.data
-    assert pending.user.name.encode() in page.data
+    assert application.user.name.encode() in page.data
     table_headers = page.data.split(b"<thead", 1)[1].split(b"</thead>", 1)[0]
-    expected_headers = [
-        b">Name<", b">Role<", b">Application<", b">Attendance_Rate<",
-        b">Match<", b">Submitted<", b">Acceptance Status<",
-    ]
+    expected_headers = [b">Name<", b">Role<", b">Application<", b">Match<", b">Submitted<"]
     assert [header for header in expected_headers if header in table_headers] == expected_headers
-    assert table_headers.count(b"<th") == 7
+    assert table_headers.count(b"<th") == 5
     assert client.get("/staff/applications?status=all").status_code == 200
     assert client.get("/staff/applications?status=all").data.count(b"data-list-row") > 1
 
 
-def test_staff_quick_accept_all_pending_applications(client):
+def test_staff_application_details_are_read_only(client):
     login(client, "staff.admin@example.org")
-    pending = db.session.query(Application).filter_by(status="submitted").all()
-    assert pending
-    response = client.post("/staff/applications/quick-accept")
-    assert response.status_code == 302
-    assert all(application.status == "accepted" for application in pending)
-    assert all(application.reviewed_by_id is not None for application in pending)
-    assert db.session.query(AuditLog).filter_by(action="applications_bulk_accepted").count() == 1
-    assert db.session.query(Application).filter_by(status="submitted").count() == 0
+    application = db.session.query(Application).filter_by(status="accepted").first()
+    page = client.get(f"/staff/applications/{application.id}")
+    assert page.status_code == 200
+    assert b'name="decision"' not in page.data
+    assert b'name="staff_notes"' not in page.data
+    assert b"Accept</button>" not in page.data
+    assert b"Reject</button>" not in page.data
+    assert client.post(f"/staff/applications/{application.id}", data={"decision": "rejected"}).status_code == 405
+    assert client.post(f"/staff/applications/{application.id}/undo").status_code == 404
+    assert application.status == "accepted"
 
 
 def test_deactivated_account_is_signed_out_and_unmatched(client):

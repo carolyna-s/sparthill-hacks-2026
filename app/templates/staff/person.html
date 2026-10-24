@@ -3,7 +3,7 @@
 {% from "staff/_match.html" import profile_facts, score_or_flag, denial with context %}
 {% set u = d.user %}
 {% block content %}
-<a href="{{ url_for('staff.applications', status='all') }}" class="text-sm text-slate-500">← Applicants</a>
+<a href="{{ url_for('staff.applications') }}" class="text-sm text-slate-500">← Applicants</a>
 <h1 class="text-2xl font-semibold mt-1 mb-1">{{ u.name }}</h1>
 <p class="text-sm text-slate-500 mb-5">{{ u.role }} · {{ u.email }} · joined {{ u.created_at.strftime('%b %d, %Y') }}</p>
 <div class="grid md:grid-cols-2 gap-5">
@@ -14,7 +14,7 @@
       <li>2. Agreements {% if d.unsigned %}<span class="text-amber-700">({{ d.unsigned|length }} to sign)</span>{% else %}✓{% endif %}</li>
       <li>3. Application
         {% if d.application %}{{ status_badge(d.application.status) }}
-          <a class="text-indigo-600 ml-1" href="{{ url_for('staff.application', app_id=d.application.id) }}">Review</a>
+          <a class="text-indigo-600 ml-1" href="{{ url_for('staff.application', app_id=d.application.id) }}">View</a>
         {% else %}<span class="text-slate-500">not started</span>{% endif %}</li>
     </ol>
     {% endcall %}
