@@ -165,21 +165,49 @@ def feedback():
 
 
 # --- messaging -----------------------------------------------------------------
+# Messaging opens only once a mentee and mentor are in an approved match. Until then the
+# Messages tab is shown locked and leads to a notice saying what they're waiting for.
+
+def _approved_matches(user: User) -> list[Match]:
+    return (db.session.query(Match)
+            .filter(Match.status == "approved", (Match.mentee_id == user.id) | (Match.mentor_id == user.id))
+            .all())
+
+
+@bp.app_context_processor
+def _messages_nav():
+    locked = (current_user.is_authenticated and current_user.role in ("mentee", "mentor")
+              and not _approved_matches(current_user))
+    return {"messages_locked": locked}
+
+
+def _messages_locked(match: Match | None = None):
+    """The notice shown instead of messages: the pending match (if any) says what's left."""
+    if match is None:
+        match = (db.session.query(Match)
+                 .filter(Match.status.in_(("proposed", "released")),
+                         (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id))
+                 .order_by(Match.proposed_at.desc()).first())
+    return render_template("program/messages_locked.html", pending=match)
+
 
 @bp.get("/messages/")
 @login_required
 def inbox():
-    rows = (db.session.query(Match)
-            .filter(Match.status == "approved",
-                    (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id)).all())
+    rows = _approved_matches(current_user)
+    if not rows:
+        return _messages_locked()
     if len(rows) == 1:
         return redirect(url_for("program.messages", match_id=rows[0].id))
-    return redirect(url_for("main.dashboard"))  # no match yet, or several: pick one from the dashboard
+    return redirect(url_for("main.dashboard"))  # several: pick one from the dashboard
 
 
 @bp.route("/messages/<int:match_id>", methods=["GET", "POST"])
 @login_required
 def messages(match_id: int):
+    pending = db.session.get(Match, match_id)
+    if pending and pending.includes(current_user) and pending.status in ("proposed", "released"):
+        return _messages_locked(pending)
     m = _approved_match(match_id)
     if request.method == "POST":
         if not m.includes(current_user):

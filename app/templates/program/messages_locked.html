@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{# Shown instead of Messages until the user's mentorship is assigned and approved (program._messages_locked). #}
+{% set partner = 'mentor' if current_user.role == 'mentee' else 'mentee' %}
+{% block content %}
+<div class="max-w-xl mx-auto">
+<h1 class="text-2xl font-semibold mb-5">Messages</h1>
+{% call card() %}
+  <div class="flex gap-4">
+    <span class="shrink-0 h-10 w-10 rounded-full bg-slate-100 text-slate-500 grid place-items-center" aria-hidden="true">
+      <svg viewBox="0 0 20 20" fill="currentColor" class="h-5 w-5"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd"/></svg>
+    </span>
+    <div class="text-sm">
+      <p class="font-semibold text-slate-900 mb-1">Messages aren't available yet</p>
+      {% if pending and pending.status == 'released' %}
+        {% set waiting_on_you = current_user.id == pending.mentee_id and not pending.mentee_confirmed_at %}
+        <p class="text-slate-600">You've been matched with {{ pending.other(current_user).name }}, but the match still needs to be
+          confirmed. Messaging opens as soon as it's approved.</p>
+        {% if waiting_on_you %}
+          <a href="{{ url_for('main.match_confirmation', match_id=pending.id) }}"
+             class="inline-flex mt-3 rounded-lg bg-brand-600 px-3 py-2 font-medium text-white hover:bg-brand-700">Confirm your match</a>
+        {% endif %}
+      {% elif pending %}
+        <p class="text-slate-600">Staff are reviewing a {{ partner }} for you. You'll be able to message them once your mentorship is
+          assigned and approved.</p>
+      {% else %}
+        <p class="text-slate-600">You don't have a {{ partner }} yet. Messaging unlocks once your mentorship is assigned and
+          approved by the program staff.</p>
+      {% endif %}
+      <a href="{{ url_for('main.dashboard') }}" class="inline-block mt-3 ml-1 text-brand-700 hover:underline">Back to dashboard</a>
+    </div>
+  </div>
+{% endcall %}
+</div>
+{% endblock %}
