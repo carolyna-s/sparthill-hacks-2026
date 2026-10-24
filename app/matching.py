@@ -7,7 +7,11 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
     score = 100 * sum(weight[d] * sim[d]) / sum(weight)
 
-- industry: 1 if the same (ignoring case), else 0.
+- industry: 1 if the same (ignoring case). Otherwise partial credit for a related industry,
+  the higher of: GROUP_CREDIT when both are in the same sector (taxonomy.INDUSTRY_GROUPS:
+  Software Development vs Artificial Intelligence), and the cosine similarity of the embedded
+  names rescaled from INDUSTRY_RANGE (Banking vs Financial Services ~0.75, which beats the
+  sector credit). 0 for unrelated industries.
 - coverage dimensions (skills, goals): share of what the mentee asked for that the mentor
   covers. Coverage (not Jaccard) is used on purpose: a mentor with many tags shouldn't be
   penalized for breadth.
@@ -44,13 +48,13 @@ from dataclasses import dataclass, field
 from . import embeddings
 from .extensions import db
 from .models import Application, Match, MatchExclusion, MatchOverrideRequest, Profile, User
+from .taxonomy import BASE_LANGUAGE, INDUSTRY_GROUPS, OPEN_TO_ANY, UNDECIDED
 
 MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 
 HARD_FILTERS = ("availability",)
 COVERAGE = ("development_areas", "goals")
 PREFERENCE = ("education_paths",)
-BASE_LANGUAGE = "English"  # assumed shared by everyone: only other shared languages score
 
 WEIGHTS = {
     "industry": 0.28,
@@ -66,6 +70,19 @@ WEIGHTS = {
 # unrelated text, or above ~0.7 for close paraphrases; stretch that band to 0-1. Tune once
 # there are real answers to look at.
 SEMANTIC_RANGE = (0.2, 0.7)
+# Same idea for "Industry: <name>" embeddings, measured over every pair in the taxonomy: the
+# median pair is ~0.50, near-synonyms ~0.8 (Banking ~ Financial Services 0.79). The floor is
+# high on purpose: names alone don't separate loosely related industries from unrelated ones
+# (Banking ~ Software Development 0.64 beats Software Development ~ AI 0.59), so only clearly
+# close industries get credit; 10% of pairs get any.
+INDUSTRY_RANGE = (0.60, 0.85)
+# Same sector, different industry: enough to beat loosely related embeddings, well short of
+# the same industry. The embedding catches near-synonyms across sectors and typed industries.
+GROUP_CREDIT = 0.6
+SECTORS = {}  # lowercased industry -> its sectors
+for _sector, _industries in INDUSTRY_GROUPS.items():
+    for _industry in _industries:
+        SECTORS.setdefault(_industry.lower(), set()).add(_sector)
 
 FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("languages", "industry", "school", "prefers_alumni")
 
@@ -106,12 +123,32 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / norm if norm else 0.0
 
 
+def _rescaled(a: list[float], b: list[float], band: tuple[float, float]) -> float:
+    lo, hi = band
+    return min(1.0, max(0.0, (_cosine(a, b) - lo) / (hi - lo)))
+
+
 def text_similarity(mentee: dict, mentor: dict) -> dict[str, float]:
     """0-1 similarity per text box both sides have a vector for."""
     a, b = mentee.get("text_vectors") or {}, mentor.get("text_vectors") or {}
-    lo, hi = SEMANTIC_RANGE
-    return {f: min(1.0, max(0.0, (_cosine(a[f], b[f]) - lo) / (hi - lo)))
-            for f in embeddings.TEXT_FIELDS if f in a and f in b}
+    return {f: _rescaled(a[f], b[f], SEMANTIC_RANGE) for f in embeddings.TEXT_FIELDS if f in a and f in b}
+
+
+def shared_sectors(mentee: dict, mentor: dict) -> list[str]:
+    def sectors(tags: dict) -> set[str]:
+        return SECTORS.get((tags.get("industry") or "").strip().lower(), set())
+    return sorted(sectors(mentee) & sectors(mentor))
+
+
+def industry_similarity(mentee: dict, mentor: dict) -> float:
+    """1 for the same industry; for a different one, the better of the shared-sector credit and
+    the embedding similarity (see INDUSTRY_RANGE); 0 if unrelated."""
+    if _same(mentee, mentor, "industry"):
+        return 1.0
+    a = (mentee.get("text_vectors") or {}).get("industry")
+    b = (mentor.get("text_vectors") or {}).get("industry")
+    embedded = _rescaled(a, b, INDUSTRY_RANGE) if a and b else 0.0
+    return max(GROUP_CREDIT if shared_sectors(mentee, mentor) else 0.0, embedded)
 
 
 def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[float, dict]:
@@ -130,8 +167,14 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             sim = 1.0
         elif dim == "industry":
             wanted = (mentee.get("industry") or "").strip()
-            shared = [mentor["industry"]] if _same(mentee, mentor, "industry") else []
-            sim = (1.0 if shared else 0.0) if wanted else 1.0
+            sim = industry_similarity(mentee, mentor) if wanted else 1.0
+            if not wanted or not sim:
+                shared = []
+            elif _same(mentee, mentor, "industry"):
+                shared = [mentor["industry"]]
+            else:
+                sector = ", ".join(shared_sectors(mentee, mentor))
+                shared = [f"related{f' ({sector})' if sector else ''}: {mentor['industry']} {round(100 * sim)}%"]
         elif dim == "alumni":
             wanted = mentee.get("prefers_alumni")
             shared = [mentor["school"]] if wanted and _same(mentee, mentor, "school") else []
@@ -140,6 +183,12 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             wanted = set(mentee.get(dim) or [])
             shared = sorted(wanted & set(mentor.get(dim) or []))
             if not wanted:
+                sim = 1.0
+            elif dim == "development_areas" and OPEN_TO_ANY in wanted:
+                shared = sorted(set(mentor.get(dim) or []) - {OPEN_TO_ANY})
+                sim = 1.0
+            elif dim in ("goals", *PREFERENCE) and UNDECIDED in wanted:
+                shared = []
                 sim = 1.0
             elif dim in PREFERENCE:
                 sim = 1.0 if shared else 0.0

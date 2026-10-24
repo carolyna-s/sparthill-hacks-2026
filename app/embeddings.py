@@ -1,10 +1,17 @@
-"""Embeddings of the free-text answers, for the semantic part of the match score.
+"""Embeddings of the free-text answers and the industry, for the semantic parts of the match
+score.
 
-Each text box is embedded on its own with OpenAI (`OPENAI_EMBEDDING_MODEL` at EMBEDDING_DIM)
-and stored in `profile.text_embeddings` with a hash of the text it came from:
+Each text box, and the industry name, is embedded on its own with OpenAI
+(`OPENAI_EMBEDDING_MODEL` at EMBEDDING_DIM) and stored in `profile.text_embeddings` with a hash
+of the text it came from:
 
     {"model": "text-embedding-3-small:384",
-     "fields": {"looking_for": {"hash": "9f2c...", "vector": [...]}, ...}}
+     "fields": {"looking_for": {"hash": "9f2c...", "vector": [...]}, "industry": {...}, ...}}
+
+The industry is embedded as "Industry: <name>": bare names are too short to embed well (bare
+"Software Development" was as close to "Wine and Spirits" as to "Artificial Intelligence");
+the label pulls near-synonyms well clear of unrelated industries. See INDUSTRY_RANGE in
+app/matching.py for what it still can't tell apart.
 
 `refresh` only calls the API for answers that are new or changed, and drops vectors for
 answers that were cleared or changed, so a stored vector always matches its text. Without
@@ -25,6 +32,8 @@ from .types import EMBEDDING_DIM
 # Compared mentee field <-> the same mentor field: what the mentee is looking for vs what the
 # mentor hopes to offer, interests vs interests, other goals vs goals they can help with.
 TEXT_FIELDS = ("interests", "goals_other", "looking_for")
+EMBEDDED_FIELDS = TEXT_FIELDS + ("industry",)  # industry is scored on its own, not with the text
+PREFIXES = {"industry": "Industry: "}
 MAX_CHARS = 20_000  # far beyond any real answer; keeps a pasted essay under the model's limit
 
 
@@ -34,6 +43,12 @@ def model_tag() -> str:
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def _input(p: Profile, f: str) -> str:
+    """What gets embedded for field `f`, or "" if it's blank."""
+    text = (getattr(p, f) or "").strip()
+    return PREFIXES.get(f, "") + text if text else ""
 
 
 def embed(texts: list[str]) -> list[list[float]]:
@@ -61,9 +76,9 @@ def refresh(p: Profile) -> bool:
 
     data = p.text_embeddings or {}
     stored = data.get("fields", {}) if data.get("model") == model_tag() else {}
-    texts = {f: (getattr(p, f) or "").strip() for f in TEXT_FIELDS}
+    texts = {f: _input(p, f) for f in EMBEDDED_FIELDS}
     fields = {f: v for f, v in stored.items() if texts.get(f) and v["hash"] == _hash(texts[f])}
-    todo = [f for f in TEXT_FIELDS if texts[f] and f not in fields]
+    todo = [f for f in EMBEDDED_FIELDS if texts[f] and f not in fields]
 
     ok = not todo
     if todo and current_app.config["OPENAI_API_KEY"]:
@@ -78,8 +93,9 @@ def refresh(p: Profile) -> bool:
 
 
 def backfill() -> tuple[int, int]:
-    """Refresh every profile with a text answer. Returns (up to date, still missing vectors)."""
-    has_text = db.or_(*(db.func.length(db.func.trim(getattr(Profile, f))) > 0 for f in TEXT_FIELDS))
+    """Refresh every profile with a text answer or an industry. Returns (up to date, still
+    missing vectors)."""
+    has_text = db.or_(*(db.func.length(db.func.trim(getattr(Profile, f))) > 0 for f in EMBEDDED_FIELDS))
     done = failed = 0
     for p in db.session.query(Profile).filter(has_text):
         if refresh(p):

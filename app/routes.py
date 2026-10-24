@@ -8,11 +8,11 @@ from urllib.parse import urlsplit
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import notify, program
+from . import embeddings, notify, program
 from .extensions import csrf, db
 from .intake import Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields, signup_next_step
 from .models import Event, Match, MatchExclusion, MatchFeedback, Meeting, Submission, User, utcnow
-from .taxonomy import DAYS, PERIODS, TAXONOMY, with_base_language
+from .taxonomy import DAYS, PERIODS, TAXONOMY, taxonomy_for_role, with_base_language
 
 bp = Blueprint("main", __name__)
 
@@ -218,9 +218,10 @@ def update_application():
         return render_template("application.html", application=application,
                                Personality_Questions_Data=Personality_Questions_Data,
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
-                               taxonomy=TAXONOMY, DAYS=DAYS, PERIODS=PERIODS)
+                               taxonomy=taxonomy_for_role(current_user.role), DAYS=DAYS, PERIODS=PERIODS)
 
     profile = current_user.profile
+    taxonomy = taxonomy_for_role(current_user.role)
     profile.organization = request.form.get("organization", "").strip()[:200]
     profile.headline = request.form.get("headline", "").strip()[:200]
     profile.bio = request.form.get("bio", "").strip()
@@ -231,12 +232,12 @@ def update_application():
                                            if value in TAXONOMY["languages"])
     profile.industry = request.form.get("industry", "").strip()[:120] or None
     profile.development_areas = [value for value in request.form.getlist("development_areas")
-                                 if value in TAXONOMY["development_areas"]]
+                                 if value in taxonomy["development_areas"]]
     profile.goals = [value for value in request.form.getlist("goals")
-                     if value in TAXONOMY["goals"]]
+                     if value in taxonomy["goals"]]
     profile.goals_other = request.form.get("goals_other", "").strip()
     profile.education_paths = [value for value in request.form.getlist("education_paths")
-                               if value in TAXONOMY["education_paths"]]
+                               if value in taxonomy["education_paths"]]
     profile.prefers_alumni = current_user.role == "mentee" and bool(request.form.get("prefers_alumni"))
     profile.interests = request.form.get("interests", "").strip()
     profile.looking_for = request.form.get("looking_for", "").strip()
@@ -246,7 +247,7 @@ def update_application():
     application.answers = {**(application.answers or {}), **answers}
 
     errors = []
-    if missing_fields(current_user):
+    if missing_fields(current_user, 1) or missing_fields(current_user, 2):
         errors.append("Complete the required school and availability fields.")
     required_text = [
         label for key, label in Industry_Relevant_Prompt_Data[current_user.role].items()
@@ -270,8 +271,9 @@ def update_application():
         return render_template("application.html", application=application,
                                Personality_Questions_Data=Personality_Questions_Data,
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
-                               taxonomy=TAXONOMY, DAYS=DAYS, PERIODS=PERIODS, editing=True)
+                               taxonomy=taxonomy, DAYS=DAYS, PERIODS=PERIODS, editing=True)
 
+    embeddings.refresh(profile)  # text answers and industry may have changed
     db.session.commit()
     flash("Application changes saved.", "ok")
     return redirect(url_for("main.update_application"))

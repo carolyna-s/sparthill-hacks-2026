@@ -152,6 +152,9 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
+    assert b'href="/dashboard"' not in blocked.data
+    assert b'href="/modules"' not in blocked.data
+    assert b'href="/messages/"' not in blocked.data
     assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
     blocked = client.get("/profile/3", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")  # locked until step 2 is done
@@ -169,10 +172,22 @@ def test_mentee_intake_flow(client):
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Modules" in blocked.data
 
-    resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
-                                           "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
+    preferences = {
+        "industry": "  software   DEVELOPMENT ",
+        "development_areas": ["Open to Any"],
+        "goals": ["Undecided"],
+        "education_paths": ["Undecided"],
+        "goals_other": "write a book",
+        "prefers_alumni": "1",
+    }
+    page = client.get("/profile/3")
+    assert b"Open to Any" in page.data
+    assert b"Undecided" in page.data
+    resp = client.post("/profile/3", data=preferences)
     assert resp.headers["Location"].endswith("/profile/4")
-    assert user.profile.goals == ["switch careers"]
+    assert user.profile.development_areas == ["Open to Any"]
+    assert user.profile.goals == ["Undecided"]
+    assert user.profile.education_paths == ["Undecided"]
     assert user.profile.goals_other == "write a book"
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
@@ -213,7 +228,7 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
-    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/4")
+    assert client.post("/profile/3", data=preferences).headers["Location"].endswith("/profile/4")
 
     profile_page = client.get("/profile/4")
     assert b"What subjects are you interested in learning more about?" in profile_page.data
@@ -277,7 +292,17 @@ def test_required_fields_block_next(client):
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
     assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
     assert user.profile.languages == ["English"]
-    client.post("/profile/3", data={})
+    page = client.get("/profile/3")
+    assert b"entrepreneurship" in page.data
+    assert b"Open to Any" not in page.data
+    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/3")
+    resp = client.post("/profile/3", data={
+        "industry": "Education Administration",
+        "development_areas": ["leadership"],
+        "goals": ["entrepreneurship"],
+        "education_paths": ["4-year university"],
+    })
+    assert resp.headers["Location"].endswith("/profile/4")
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
     assert b"What type of mentor do you see yourself being?" in profile_page.data
@@ -351,12 +376,12 @@ def test_review_match_and_message(client):
     assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
-    assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
+    assert f"Messages with {match.mentor.name}".encode() in page.data
     assert b"Sent" in page.data and b"Seen" not in page.data
     login(client, match.mentor.email)
     page = client.get(f"/messages/{match.id}")
     assert b"Hi!" in page.data
-    assert f"Messages with your mentee, {match.mentee.name}".encode() in page.data
+    assert f"Messages with {match.mentee.name}".encode() in page.data
     assert b"Active now" in page.data  # the mentee was just here
     assert db.session.query(Message).one().read_at is not None
     login(client, match.mentee.email)
@@ -391,6 +416,16 @@ def test_unread_message_badge_and_live_thread_updates(client):
     assert update.json["unread_count"] == 0
     assert b"data-live-messages" in thread_page.data
     assert b"data-message-updates-url" in thread_page.data
+
+    # Messages the viewer hadn't read are flagged new (shaded blue), once.
+    assert f'data-message-id="{message.id}" data-new'.encode() in thread_page.data
+    assert b"New messages" in thread_page.data
+    arrived = db.session.query(Message).filter_by(body="Arrived while open").one()
+    assert f'data-message-id="{arrived.id}" data-new' in update.json["messages_html"]
+    again = client.get(f"/messages/{match.id}/updates").json["messages_html"]
+    assert " data-new>" not in again and "New messages" not in again
+    assert client.get(f"/messages/{match.id}").data.index(b"Unread first message") < \
+        client.get(f"/messages/{match.id}").data.index(b"Arrived while open")  # oldest first
 
 
 def test_mentor_schedules_meeting_on_both_calendars(client):

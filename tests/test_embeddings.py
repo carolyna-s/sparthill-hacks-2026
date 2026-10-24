@@ -27,6 +27,7 @@ def calls(app, monkeypatch):
 def _profile(**text) -> Profile:
     p = db.session.query(User).filter_by(email="jordan.kim@example.org").one().profile
     p.interests, p.goals_other, p.looking_for = text.get("interests"), text.get("goals_other"), text.get("looking_for")
+    p.industry = text.get("industry")
     p.text_embeddings = None
     return p
 
@@ -44,6 +45,31 @@ def test_refresh_embeds_only_new_or_changed_answers(calls):
     assert embeddings.refresh(p)
     assert calls[-1] == ["resume review"]
     assert set(embeddings.vectors(p)) == {"looking_for"}  # cleared answer's vector dropped
+
+
+def test_industry_is_embedded_with_a_label_and_redone_when_it_changes(calls):
+    p = _profile(industry="Banking")
+    assert embeddings.refresh(p)
+    assert calls == [["Industry: Banking"]]
+    assert set(embeddings.vectors(p)) == {"industry"}
+    p.industry = "Financial Services"
+    embeddings.refresh(p)
+    assert calls[-1] == ["Industry: Financial Services"]
+    p.industry = None
+    embeddings.refresh(p)
+    assert embeddings.vectors(p) == {}
+
+
+def test_editing_the_submitted_application_refreshes_vectors(client, calls):
+    login(client, "jordan.kim@example.org")
+    client.post("/dashboard/application", data={
+        "availability": ["Monday - night"], "languages": ["English"], "industry": "Banking",
+        "interests": "Payments", "mentorship_style": "Direct", "career_advice": "Ask early",
+    })
+    p = db.session.query(User).filter_by(email="jordan.kim@example.org").one().profile
+    assert p.industry == "Banking"
+    assert "Industry: Banking" in calls[-1] and "Payments" in calls[-1]
+    assert {"industry", "interests"} <= set(embeddings.vectors(p))
 
 
 def test_refresh_without_key_or_on_error_leaves_no_stale_vector(app, calls, monkeypatch):
@@ -75,7 +101,7 @@ def test_saving_the_text_step_embeds_answers(client, calls):
     login(client, "jordan.kim@example.org")
     client.post("/profile/4", data={"looking_for": "Interview practice", "interests": "robotics"})
     p = db.session.query(User).filter_by(email="jordan.kim@example.org").one().profile
-    assert set(embeddings.vectors(p)) == {"interests", "looking_for"}
+    assert set(embeddings.vectors(p)) == {"interests", "looking_for", "industry"}  # seeded industry too
 
 
 def test_backfill_embeds_seeded_profiles(calls):

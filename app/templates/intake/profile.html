@@ -5,14 +5,14 @@
 {% block content %}
 <div class="max-w-3xl mx-auto">
 <h1 class="text-2xl font-semibold mb-1">Your profile</h1>
-<p class="text-sm text-slate-500 mb-6">Complete the required questions in steps 1, 2, and 4 to finish account setup. Preferences in step 3 are optional.</p>
+<p class="text-sm text-slate-500 mb-6">Complete the required questions in steps 1-4 to finish account setup.</p>
 
 {# Stepper for the profile setup questions. #}
 <nav aria-label="Sign-up steps" class="mb-6">
   <ol class="flex items-start">
     {% for label in steps %}
       {% set n = loop.index %}
-      {% set reachable = n <= 2 or not locked %}
+      {% set reachable = n not in locked_steps %}
       <li class="flex-1 min-w-0">
         <a {% if reachable and n != step %}href="{{ url_for('intake.profile_step', step=n) }}"{% endif %}
            {% if n == step %}aria-current="step"{% endif %}
@@ -21,7 +21,7 @@
                        {{ 'bg-brand-600 text-white' if n == step else 'bg-emerald-100 text-emerald-800' if done.get(n) else 'bg-slate-200 text-slate-600' }}">
             {{ '✓' if done.get(n) and n != step else n }}</span>
           <span class="text-xs leading-tight {{ 'font-medium' if n == step else 'text-slate-600' }}">
-            {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }}{% if n <= 2 or n == 4 %} {{ req() }}{% endif %}</span>
+            {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }} {{ req() }}</span>
         </a>
       </li>
     {% endfor %}
@@ -43,7 +43,7 @@
       {% call field("School you graduated from" if mentor else "School", required=True) %}
         <input name="school" value="{{ p.school or '' }}" required class="{{ input_cls() }}">
       {% endcall %}
-      {% call field("Company" if mentor else "Organization", hint=None if mentor else "optional") %}
+      {% call field("Company" if mentor else "Organization", hint="optional") %}
         <input name="organization" value="{{ p.organization or '' }}" autocomplete="organization" class="{{ input_cls() }}">
       {% endcall %}
     </div>
@@ -68,7 +68,7 @@
   {% elif step == 2 %}
   {% call card("When and how you can meet") %}
     <p class="text-sm text-slate-500 mb-4">You'll only be matched with someone who shares at least one time slot. A shared language other than English counts in your favor.</p>
-    <fieldset class="mb-5">
+    <fieldset class="mb-5" data-required-tag-group aria-required="true" tabindex="-1">
       <legend class="text-sm font-medium mb-2">When are you usually free? {{ req() }} <span class="font-normal text-slate-500">· pick all that apply</span></legend>
       <div class="grid grid-cols-[auto_repeat(4,minmax(0,1fr))] gap-1.5 sm:gap-2 text-sm items-center max-w-xl">
         <span></span>
@@ -86,25 +86,26 @@
           {% endfor %}
         {% endfor %}
       </div>
+      <p class="hidden text-sm text-red-600 mt-2" data-tag-required-error>Choose at least one time you are available.</p>
     </fieldset>
     <p class="text-sm font-medium mb-2">Languages you're comfortable meeting in</p>
-    <p class="text-sm text-slate-500 mb-2"><span class="inline-block border rounded-full px-3 py-1 bg-brand-600 text-white border-brand-600 mr-1">English</span> is included for everyone.</p>
-    {{ tag_picker("languages", "Any others?", taxonomy.languages|reject("equalto", "English")|list, sel.languages, hint="optional · pick all that apply", suggested=suggested.get('languages', ())) }}
+    <p class="text-sm text-slate-500 mb-2"><span class="inline-block border rounded-full px-3 py-1 bg-brand-600 text-white border-brand-600 mr-1">English</span> is included for everyone; select any additional languages.</p>
+    {{ tag_picker("languages", "Additional languages", taxonomy.languages|reject("equalto", "English")|list, sel.languages, hint="pick all that apply", suggested=suggested.get('languages', ())) }}
   {% endcall %}
 
   {% elif step == 3 %}
   {% call card("What you bring" if mentor else "What you're looking for") %}
-    <p class="text-sm text-slate-500 mb-4">These shape your match. Skip anything you have no preference on.</p>
-    {% call field("Industry you work in" if mentor else "Industry you're interested in") %}
+    <p class="text-sm text-slate-500 mb-4">These shape your match. Choose the option that best fits you.</p>
+    {% call field("Industry you work in" if mentor else "Industry you're interested in", required=True) %}
       <input name="industry" list="industries" value="{{ industry or '' }}" autocomplete="off"
-             placeholder="Start typing, e.g. Software Development" class="{{ input_cls() }} max-w-sm {{ 'ring-2 ring-amber-400' if suggested.industry }}">
+             placeholder="Start typing, e.g. Software Development" required class="{{ input_cls() }} max-w-sm {{ 'ring-2 ring-amber-400' if suggested.industry }}">
       <datalist id="industries">{% for i in industries %}<option value="{{ i }}">{% endfor %}</datalist>
     {% endcall %}
-    {{ tag_picker("development_areas", "Skills you can teach" if mentor else "Skills you want to learn", taxonomy.development_areas, sel.development_areas, suggested=suggested.get('development_areas', ())) }}
-    {{ tag_picker("goals", "Goals you can help with" if mentor else "Your goals", taxonomy.goals, sel.goals, suggested=suggested.get('goals', ())) }}
+    {{ tag_picker("development_areas", "Skills you can teach" if mentor else "Skills you want to learn", taxonomy.development_areas, sel.development_areas, suggested=suggested.get('development_areas', ()), required=True) }}
+    {{ tag_picker("goals", "Goals you can help with" if mentor else "Your goals", taxonomy.goals, sel.goals, suggested=suggested.get('goals', ()), required=True) }}
     <input name="goals_other" value="{{ p.goals_other or '' }}" aria-label="Other goals"
            placeholder="Other goals" class="{{ input_cls() }} max-w-sm -mt-2 mb-5">
-    {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, sel.education_paths, suggested=suggested.get('education_paths', ())) }}
+    {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, sel.education_paths, suggested=suggested.get('education_paths', ()), required=True) }}
     {% if not mentor and p.school %}
       <label class="text-sm flex items-center gap-2"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
         Prefer a mentor who also went to {{ p.school }}</label>
@@ -144,4 +145,31 @@
   </div>
 </form>
 </div>
+<script>
+  document.querySelectorAll("form").forEach((form) => {
+    const groups = Array.from(form.querySelectorAll("[data-required-tag-group]"));
+    groups.forEach((group) => {
+      group.addEventListener("change", () => {
+        if (group.querySelector("input[type=checkbox]:checked")) {
+          group.setAttribute("aria-invalid", "false");
+          group.querySelector("[data-tag-required-error]").classList.add("hidden");
+        }
+      });
+    });
+    form.addEventListener("submit", (event) => {
+      if (event.submitter && event.submitter.formNoValidate) return;
+      let firstMissing = null;
+      groups.forEach((group) => {
+        const missing = !group.querySelector("input[type=checkbox]:checked");
+        group.setAttribute("aria-invalid", String(missing));
+        group.querySelector("[data-tag-required-error]").classList.toggle("hidden", !missing);
+        if (missing && !firstMissing) firstMissing = group;
+      });
+      if (firstMissing) {
+        event.preventDefault();
+        firstMissing.focus();
+      }
+    });
+  });
+</script>
 {% endblock %}
