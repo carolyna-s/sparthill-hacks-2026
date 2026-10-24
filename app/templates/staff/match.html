@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, card, btn, status_badge, input_cls %}
+{% from "staff/_match.html" import why, profile_facts, denial with context %}
+{% block content %}
+<a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500">← Matching</a>
+<h1 class="text-2xl font-semibold mt-1 mb-1">{{ m.mentee.name }} → {{ m.mentor.name }} {{ status_badge(m.status) }}</h1>
+<p class="text-sm text-slate-500 mb-5">Score {{ m.score }} · proposed {{ m.proposed_at.strftime('%b %d') }}
+  · mentor has {{ slots.get(m.mentor_id, 0) }} open slot(s)</p>
+
+<div class="grid md:grid-cols-3 gap-5">
+  {% for role, u in [("Mentee", m.mentee), ("Mentor", m.mentor)] %}
+    {% call card(role ~ ": " ~ u.name) %}
+      {{ profile_facts(u) }}
+      <a class="text-sm text-indigo-600" href="{{ url_for('staff.person', user_id=u.id) }}">View {{ u.name.split()[0] }}'s dashboard →</a>
+    {% endcall %}
+  {% endfor %}
+  <div>
+    {% call card("Why they were matched") %}{{ why(m.score_breakdown) }}{% endcall %}
+
+    {% if m.status == 'proposed' %}
+      {% call card("Decision") %}
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='approve') }}" class="mb-4">
+        {{ csrf() }}{{ btn("Approve this match") }}
+      </form>
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="space-y-3 border-t pt-4">
+        {{ csrf() }}
+        <fieldset>
+          <legend class="text-sm font-medium mb-2">Why are you rejecting it?</legend>
+          {% for key, label in deny_reasons.items() %}
+            <label class="flex items-start gap-2 text-sm py-0.5">
+              <input type="radio" name="reason" value="{{ key }}" required class="mt-1"> {{ label }}</label>
+            {% if loop.first %}<p class="text-xs text-slate-500 mt-2 mb-1">Or something specific:</p>{% endif %}
+          {% endfor %}
+        </fieldset>
+        <label class="block">
+          <span class="text-sm font-medium block mb-1">Explain your reasoning</span>
+          <textarea name="comment" rows="4" required class="{{ input_cls() }}"
+            placeholder="What made it feel off, or what looked wrong? e.g. &quot;Mentee wants research, mentor is pure startup.&quot; A hunch is fine, just describe it."></textarea>
+          <span class="text-xs text-slate-500">Saved with the match so the matching can learn from it. This pair won't be proposed again.</span>
+        </label>
+        {{ btn("Reject match", "danger") }}
+      </form>
+      {% endcall %}
+    {% endif %}
+
+    {% if denials %}
+      {% call card("Rejection reason") %}<div class="space-y-3">{% for f in denials %}{{ denial(f) }}{% endfor %}</div>{% endcall %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% from "_macros.html" import tags %}
+
+{# Why a pair scored what it did: shared hard filters, then per-dimension coverage. #}
+{% macro why(breakdown) %}
+  {% for dim, shared in (breakdown.get('filters') or {}).items() if shared %}
+    <div class="text-xs text-slate-500">{{ dim }}: <span class="text-slate-700">{{ shared|join(', ') }}</span></div>
+  {% endfor %}
+  {% for dim, d in breakdown.items() if dim != 'filters' %}
+    <div class="text-xs text-slate-500">{{ dim.replace('_', ' ') }}: {{ (d.coverage * 100)|round|int }}%
+      {% if d.shared %}<span class="text-slate-700">({{ d.shared|join(', ') }})</span>{% endif %}</div>
+  {% endfor %}
+{% endmacro %}
+
+{% macro profile_facts(u) %}
+{% set p = u.profile %}
+<p class="text-sm text-slate-500 mb-3">{{ p.headline or '—' }}{{ (' · ' ~ p.organization) if p.organization }}</p>
+{% for label, values in [("Availability", p.availability), ("Languages", p.languages),
+                         ("Skills", p.development_areas), ("Goals", p.goals), ("Educational path", p.education_paths)] %}
+  <p class="text-xs text-slate-500">{{ label }}</p><div class="mb-2">{{ tags(values) if values else '—' }}</div>
+{% endfor %}
+{% for label, text in [("Industry", p.industry), ("School", p.school), ("Interests", p.interests),
+                       ("Looking for from the program" if u.role == 'mentee' else "Hopes to offer", p.looking_for)] %}
+  <p class="text-xs text-slate-500">{{ label }}</p><p class="text-sm mb-2 whitespace-pre-line">{{ text or '—' }}</p>
+{% endfor %}
+{% endmacro %}
+
+{# A staff rejection: reason, explanation, who and when. #}
+{% macro denial(f) %}
+<div class="text-sm border-l-2 border-red-300 pl-3 py-1">
+  <p><span class="font-medium">{{ deny_reasons.get(f.reason, f.reason) }}</span>
+    <span class="text-slate-500">· {{ f.author.name }}, {{ f.created_at.strftime('%b %d') }}</span></p>
+  <p class="text-slate-700 whitespace-pre-line">{{ f.comment }}</p>
+</div>
+{% endmacro %}

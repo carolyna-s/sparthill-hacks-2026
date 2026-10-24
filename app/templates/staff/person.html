@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, status_badge %}
+{% from "staff/_match.html" import profile_facts, denial with context %}
+{% set u = d.user %}
+{% block content %}
+<a href="{{ url_for('staff.people') }}" class="text-sm text-slate-500">← People</a>
+<h1 class="text-2xl font-semibold mt-1 mb-1">{{ u.name }}</h1>
+<p class="text-sm text-slate-500 mb-5">{{ u.role }} · {{ u.email }} · joined {{ u.created_at.strftime('%b %d, %Y') }}</p>
+<div class="grid md:grid-cols-2 gap-5">
+  <div>
+    {% call card("Getting started") %}
+    <ol class="text-sm space-y-2">
+      <li>1. Profile {% if d.missing %}<span class="text-amber-700">(missing {{ d.missing|join(', ') }})</span>{% else %}✓{% endif %}</li>
+      <li>2. Agreements {% if d.unsigned %}<span class="text-amber-700">({{ d.unsigned|length }} to sign)</span>{% else %}✓{% endif %}</li>
+      <li>3. Application
+        {% if d.application %}{{ status_badge(d.application.status) }}
+          <a class="text-indigo-600 ml-1" href="{{ url_for('staff.application', app_id=d.application.id) }}">Review</a>
+        {% else %}<span class="text-slate-500">not started</span>{% endif %}</li>
+    </ol>
+    {% endcall %}
+    {% call card("Matches") %}
+      {% for m in d.matches %}
+        <div class="border-t first:border-t-0 py-2">
+          <div class="flex justify-between items-center text-sm">
+            <span>{{ m.other(u).name }} {{ status_badge(m.status) }} <span class="text-slate-500">· score {{ m.score }}</span></span>
+            <span class="space-x-3">
+              <a class="text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ 'Review' if m.status == 'proposed' else 'Details' }}</a>
+              {% if m.status == 'approved' %}<a class="text-indigo-600" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>{% endif %}
+            </span>
+          </div>
+          {% for f in denials.get(m.id, []) %}<div class="mt-2">{{ denial(f) }}</div>{% endfor %}
+        </div>
+      {% else %}<p class="text-sm text-slate-500">No matches yet.</p>{% endfor %}
+    {% endcall %}
+    {% call card("Profile") %}{{ profile_facts(u) }}{% endcall %}
+  </div>
+  <div>
+    {% call card("To do") %}
+      {% for e, kind in d.todo %}
+        <a href="{{ url_for('program.event', event_id=e.id) }}" class="block text-sm py-1">
+          <span class="font-medium">{{ kind|capitalize }}</span> for {{ e.title }}
+          <span class="text-slate-500">· due {{ e[kind ~ '_due'].strftime('%b %d') }}</span></a>
+      {% else %}<p class="text-sm text-slate-500">Nothing due.</p>{% endfor %}
+    {% endcall %}
+    {% call card("Events attended") %}
+      {% for e, at in attended %}
+        <a href="{{ url_for('program.event', event_id=e.id) }}" class="block text-sm py-1">{{ e.title }}
+          <span class="text-slate-500">· checked in {{ at.strftime('%b %d, %H:%M') }}</span></a>
+      {% else %}<p class="text-sm text-slate-500">Hasn't checked in to any events.</p>{% endfor %}
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}
