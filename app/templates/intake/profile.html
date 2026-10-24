@@ -39,27 +39,31 @@
   {% endcall %}
 
   {% call card("What you're looking for" if not mentor else "What you bring") %}
-  <p class="text-sm text-slate-500 mb-4">These shape your match score. Pick everything that applies; leave a question blank if you have no preference.</p>
-  {{ tag_picker("career_interests", "Industries / fields of interest" if not mentor else "Industries you work in", taxonomy.career_interests, p.career_interests) }}
+  <p class="text-sm text-slate-500 mb-4">These shape your match. Leave anything blank if you have no preference.</p>
+  <label class="block mb-4">
+    <span class="text-sm font-medium block mb-2">{{ "Industry you're interested in" if not mentor else "Industry you work in" }}</span>
+    <input name="industry" list="industries" value="{{ p.industry or '' }}" autocomplete="off"
+           placeholder="Start typing, e.g. Software Development" class="{{ input_cls() }} max-w-sm">
+    <datalist id="industries">{% for i in industries %}<option value="{{ i }}">{% endfor %}</datalist>
+  </label>
+  <label class="block mb-4">
+    <span class="text-sm font-medium block mb-2">Your interests</span>
+    <textarea name="interests" rows="2" placeholder="{{ 'Topics, fields, or hobbies you want to explore' if not mentor else 'Topics, fields, or hobbies you enjoy talking about' }}"
+              class="{{ input_cls() }}">{{ p.interests or '' }}</textarea>
+  </label>
   {{ tag_picker("development_areas", "Skills you want to learn" if not mentor else "Skills you can teach", taxonomy.development_areas, p.development_areas) }}
   {{ tag_picker("goals", "Your goals" if not mentor else "Goals you can help with", taxonomy.goals, p.goals) }}
-  {{ tag_picker("career_outlook", "Where you see your career in 3–5 years" if not mentor else "Career paths you can speak to", taxonomy.career_outlook, p.career_outlook) }}
-  {% if mentor %}
-    {{ tag_picker("seniority", "Your seniority", taxonomy.seniority, p.seniority, multiple=False) }}
-  {% else %}
-    {{ tag_picker("seniority", "Preferred mentor seniority", taxonomy.seniority, p.seniority) }}
-  {% endif %}
-  {{ tag_picker("mentoring_style", "How you'd like to be mentored" if not mentor else "Your mentoring style", taxonomy.mentoring_style, p.mentoring_style) }}
-  {{ tag_picker("company_types", "Company types you're interested in" if not mentor else "Company types you've worked at", taxonomy.company_types, p.company_types) }}
+  <input name="goals_other" value="{{ p.goals_other or '' }}" aria-label="Other goals"
+         placeholder="Other goals (optional)" class="{{ input_cls() }} max-w-sm -mt-2 mb-4">
+  <label class="block mb-4">
+    <span class="text-sm font-medium block mb-2">{{ "What are you looking for from this mentorship program?" if not mentor else "What do you hope to offer through this mentorship program?" }}</span>
+    <textarea name="looking_for" rows="3" class="{{ input_cls() }}">{{ p.looking_for or '' }}</textarea>
+  </label>
   {{ tag_picker("education_paths", "Your educational path", taxonomy.education_paths, p.education_paths) }}
-  <fieldset class="mb-2">
-    <legend class="text-sm font-medium mb-2">{{ "Your school" if not mentor else "School you graduated from" }}</legend>
-    <input name="school" value="{{ p.school or '' }}" placeholder="School name" class="{{ input_cls() }} max-w-sm">
-    {% if not mentor %}
-      <label class="text-sm block mt-2"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
-        Prefer a mentor who went to my school</label>
-    {% endif %}
-  </fieldset>
+  {% if not mentor and p.school %}
+    <label class="text-sm block"><input type="checkbox" name="prefers_alumni" value="1" {{ 'checked' if p.prefers_alumni }}>
+      Prefer a mentor who also went to {{ p.school }}</label>
+  {% endif %}
   {% endcall %}
   {{ btn("Save and continue") }}
 </form>

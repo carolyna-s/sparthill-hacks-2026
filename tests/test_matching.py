@@ -1,7 +1,7 @@
 from app import matching
 from app.matching import assign, rank_mentors, score_pair
 
-MENTEE = {"career_interests": ["data science", "healthcare"], "goals": ["apply to grad school"],
+MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
           "development_areas": ["writing", "technical skills"]}
 
 
@@ -12,22 +12,28 @@ def test_full_coverage_scores_100():
 
 
 def test_partial_coverage_is_weighted():
-    weights = {"career_interests": 0.4, "goals": 0.3, "development_areas": 0.3}
-    mentor = {"career_interests": ["data science"], "goals": [], "development_areas": ["writing", "technical skills"]}
+    weights = {"industry": 0.4, "goals": 0.3, "development_areas": 0.3}
+    mentor = {"industry": "Banking", "goals": [], "development_areas": ["writing"]}
     score, _ = score_pair(MENTEE, mentor, weights)
-    assert score == 100 * (0.4 * 0.5 + 0.3 * 0 + 0.3 * 1)
+    assert score == 100 * (0.4 * 0 + 0.3 * 0 + 0.3 * 0.5)
 
 
 def test_empty_mentee_dimension_does_not_penalize():
-    score, _ = score_pair({"career_interests": ["law"]}, {"career_interests": ["law"]})
+    score, _ = score_pair({"industry": "Law Practice"}, {"industry": "Law Practice"})
     assert score == 100.0
 
 
+def test_industry_matches_ignoring_case_including_typed_values():
+    weights = {"industry": 1.0}
+    assert score_pair({"industry": "marine robotics"}, {"industry": "Marine Robotics "}, weights)[0] == 100.0
+    assert score_pair({"industry": "Marine Robotics"}, {"industry": "Banking"}, weights)[0] == 0.0
+
+
 def test_preference_dimensions_need_any_one_match():
-    weights = {"seniority": 1.0}
-    mentee = {"seniority": ["mid-level (3-7 years)", "senior (7-15 years)"]}
-    assert score_pair(mentee, {"seniority": ["senior (7-15 years)"]}, weights)[0] == 100.0
-    assert score_pair(mentee, {"seniority": ["executive (15+ years)"]}, weights)[0] == 0.0
+    weights = {"education_paths": 1.0}
+    mentee = {"education_paths": ["community college transfer", "first-generation college student"]}
+    assert score_pair(mentee, {"education_paths": ["first-generation college student"]}, weights)[0] == 100.0
+    assert score_pair(mentee, {"education_paths": ["graduate degree"]}, weights)[0] == 0.0
 
 
 def test_alumni_only_counts_when_requested():
@@ -59,14 +65,14 @@ def test_blank_language_means_english():
 
 
 def test_rank_skips_full_mentors_and_orders_by_score():
-    mentors = {1: MENTEE, 2: {"career_interests": ["data science"]}, 3: MENTEE}
+    mentors = {1: MENTEE, 2: {"development_areas": ["writing"]}, 3: MENTEE}
     ranked = rank_mentors(MENTEE, mentors, open_slots={1: 1, 2: 1, 3: 0})
     assert [c.mentor_id for c in ranked] == [1, 2]
 
 
 def test_assign_respects_capacity():
     mentees = {10: MENTEE, 11: MENTEE}
-    mentors = {1: MENTEE, 2: {"career_interests": ["data science"]}}
+    mentors = {1: MENTEE, 2: {"development_areas": ["writing"]}}
     result = assign(mentees, mentors, open_slots={1: 1, 2: 1})
     assert sorted(c.mentor_id for c in result.values()) == [1, 2]
 

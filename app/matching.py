@@ -8,15 +8,16 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
     score = 100 * sum(weight[d] * sim[d]) / sum(weight)
 
-- coverage dimensions (industry, skills, goals): share of what the mentee asked for that the
-  mentor covers. Coverage (not Jaccard) is used on purpose: a mentor with many tags shouldn't
-  be penalized for breadth.
-- preference dimensions (career outlook, seniority, style, company type, education path):
-  1 if the mentor has any of the values the mentee picked, else 0.
+- industry: 1 if the same (ignoring case), else 0.
+- coverage dimensions (skills, goals): share of what the mentee asked for that the mentor
+  covers. Coverage (not Jaccard) is used on purpose: a mentor with many tags shouldn't be
+  penalized for breadth.
+- preference dimensions (education path): 1 if the mentor has any of the mentee's picks.
 - alumni: 1 if the mentee asked for a same-school mentor and the schools match.
 
 A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
-it doesn't drag every score down. Mentors at capacity are excluded.
+it doesn't drag every score down. Free-text answers (interests, other goals, what they're
+looking for) aren't scored yet; they're for the planned semantic stage (docs/PLAN.md §4.4). Mentors at capacity are excluded.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -33,14 +34,12 @@ from .models import Application, Match, Profile, User
 
 HARD_FILTERS = ("availability", "languages")
 HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
-COVERAGE = ("career_interests", "development_areas", "goals")
-PREFERENCE = ("career_outlook", "seniority", "mentoring_style", "company_types", "education_paths")
+COVERAGE = ("development_areas", "goals")
+PREFERENCE = ("education_paths",)
 
-WEIGHTS = {"career_interests": 0.20, "development_areas": 0.15, "goals": 0.15, "career_outlook": 0.10,
-           "seniority": 0.10, "mentoring_style": 0.10, "company_types": 0.08, "education_paths": 0.07,
-           "alumni": 0.05}
+WEIGHTS = {"industry": 0.35, "development_areas": 0.25, "goals": 0.20, "education_paths": 0.10, "alumni": 0.10}
 
-FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("school", "prefers_alumni")
+FIELDS = HARD_FILTERS + COVERAGE + PREFERENCE + ("industry", "school", "prefers_alumni")
 
 
 @dataclass
@@ -63,17 +62,21 @@ def hard_filter_overlap(mentee: dict, mentor: dict) -> dict[str, list] | None:
     return overlap
 
 
-def _same_school(mentee: dict, mentor: dict) -> bool:
-    a, b = (mentee.get("school") or "").strip().lower(), (mentor.get("school") or "").strip().lower()
+def _same(mentee: dict, mentor: dict, key: str) -> bool:
+    a, b = (mentee.get(key) or "").strip().lower(), (mentor.get(key) or "").strip().lower()
     return bool(a) and a == b
 
 
 def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[float, dict]:
     total, breakdown = 0.0, {}
     for dim, w in weights.items():
-        if dim == "alumni":
+        if dim == "industry":
+            wanted = (mentee.get("industry") or "").strip()
+            shared = [mentor["industry"]] if _same(mentee, mentor, "industry") else []
+            sim = (1.0 if shared else 0.0) if wanted else 1.0
+        elif dim == "alumni":
             wanted = mentee.get("prefers_alumni")
-            shared = [mentor["school"]] if wanted and _same_school(mentee, mentor) else []
+            shared = [mentor["school"]] if wanted and _same(mentee, mentor, "school") else []
             sim = (1.0 if shared else 0.0) if wanted else 1.0
         else:
             wanted = set(mentee.get(dim) or [])

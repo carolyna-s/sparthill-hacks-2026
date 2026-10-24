@@ -15,11 +15,13 @@
     {% call card("Profile") %}
       <p class="text-sm mb-3">{{ p.bio or 'No bio.' }}</p>
       {% for label, values in [("Availability", p.availability), ("Languages", p.languages),
-                               ("Industries", p.career_interests), ("Skills", p.development_areas), ("Goals", p.goals),
-                               ("Career outlook", p.career_outlook), ("Seniority", p.seniority),
-                               ("Mentoring style", p.mentoring_style), ("Company types", p.company_types),
+                               ("Skills", p.development_areas), ("Goals", p.goals),
                                ("Educational path", p.education_paths)] %}
         <p class="text-xs text-slate-500">{{ label }}</p><div class="mb-2">{{ tags(values) if values else '—' }}</div>
+      {% endfor %}
+      {% for label, text in [("Industry", p.industry), ("Interests", p.interests), ("Other goals", p.goals_other),
+                             ("Looking for from the program" if a.user.role == 'mentee' else "Hopes to offer", p.looking_for)] %}
+        <p class="text-xs text-slate-500">{{ label }}</p><p class="text-sm mb-2 whitespace-pre-line">{{ text or '—' }}</p>
       {% endfor %}
       <p class="text-xs text-slate-500">School</p>
       <p class="text-sm">{{ p.school or '—' }}{% if a.user.role == 'mentee' and p.prefers_alumni %} · prefers an alumni mentor{% endif %}</p>

@@ -17,11 +17,43 @@ LANGUAGES = [
 
 # --- soft filters: weighted into the match score -------------------------------
 
-# Industry / fields of interest
-CAREER_INTERESTS = [
-    "software engineering", "data science", "product management", "design",
-    "finance", "consulting", "healthcare", "education", "entrepreneurship",
-    "nonprofit", "marketing", "law", "research", "public policy",
+# Suggestions for the industry field (an autocomplete, like LinkedIn's). Anything the user
+# types that isn't here is kept as typed.
+INDUSTRIES = [
+    "Accounting", "Advertising Services", "Aerospace and Defense", "Agriculture", "Airlines and Aviation",
+    "Animation and Gaming", "Architecture and Planning", "Armed Forces", "Artificial Intelligence",
+    "Automotive", "Banking", "Biotechnology Research", "Book and Periodical Publishing",
+    "Broadcast Media", "Business Consulting and Services", "Chemical Manufacturing",
+    "Civic and Social Organizations", "Civil Engineering", "Computer and Network Security",
+    "Computer Games", "Computer Hardware Manufacturing", "Construction", "Consumer Electronics",
+    "Consumer Goods", "Cosmetics", "Data Infrastructure and Analytics", "Dairy Product Manufacturing",
+    "Defense and Space Manufacturing", "Design Services", "E-Learning Providers", "Education Administration",
+    "Electric Power Generation", "Entertainment Providers", "Environmental Services", "Events Services",
+    "Executive Offices", "Facilities Services", "Farming", "Fashion and Apparel", "Financial Services",
+    "Fine Art", "Food and Beverage Services", "Food and Beverage Manufacturing", "Fundraising",
+    "Furniture", "Government Administration", "Government Relations Services", "Graphic Design",
+    "Higher Education", "Hospitality", "Hospitals and Health Care", "Human Resources Services",
+    "Industrial Machinery Manufacturing", "Information Services", "Insurance", "International Affairs",
+    "International Trade and Development", "Investment Banking", "Investment Management",
+    "IT Services and IT Consulting", "Law Enforcement", "Law Practice", "Legal Services",
+    "Libraries", "Logistics and Supply Chain", "Luxury Goods and Jewelry", "Manufacturing",
+    "Maritime Transportation", "Market Research", "Marketing Services", "Mechanical Engineering",
+    "Media Production", "Medical Devices", "Medical Practices", "Mental Health Care", "Mining",
+    "Motion Pictures and Film", "Museums, Historical Sites, and Zoos", "Musicians",
+    "Nanotechnology Research", "Newspaper Publishing", "Non-profit Organizations", "Oil and Gas",
+    "Online Audio and Video Media", "Outsourcing and Offshoring Consulting", "Packaging and Containers",
+    "Performing Arts", "Pharmaceutical Manufacturing", "Philanthropic Fundraising Services",
+    "Photography", "Political Organizations", "Primary and Secondary Education", "Printing Services",
+    "Professional Training and Coaching", "Public Health", "Public Policy Offices",
+    "Public Relations and Communications Services", "Public Safety", "Real Estate",
+    "Recreational Facilities", "Religious Institutions", "Renewable Energy", "Research Services",
+    "Restaurants", "Retail", "Robotics Engineering", "Semiconductor Manufacturing", "Social Work",
+    "Software Development", "Spectator Sports", "Sporting Goods", "Staffing and Recruiting",
+    "Technology, Information and Internet", "Telecommunications", "Textile Manufacturing",
+    "Think Tanks", "Translation and Localization", "Transportation", "Travel Arrangements",
+    "Truck Transportation", "Utilities", "Venture Capital and Private Equity", "Veterinary Services",
+    "Warehousing and Storage", "Wellness and Fitness Services", "Wholesale", "Wine and Spirits",
+    "Wireless Services", "Writing and Editing",
 ]
 
 GOALS = [
@@ -36,40 +68,16 @@ DEVELOPMENT_AREAS = [
     "work-life balance",
 ]
 
-# Where the mentee wants to be in 3-5 years / tracks the mentor can speak to
-CAREER_OUTLOOK = [
-    "individual contributor / specialist", "people manager", "executive leadership",
-    "founder / entrepreneur", "academia / research", "public service", "still exploring",
-]
-
-SENIORITY = [
-    "early career (0-3 years)", "mid-level (3-7 years)", "senior (7-15 years)", "executive (15+ years)",
-]
-
-MENTORING_STYLE = [
-    "hands-on guidance", "coaching through questions", "accountability and goal tracking",
-    "sounding board", "networking and introductions",
-]
-
-COMPANY_TYPES = [
-    "startup", "mid-size company", "large corporation", "nonprofit", "government / public sector",
-    "academia", "consulting / agency", "self-employed",
-]
-
 EDUCATION_PATHS = [
     "4-year university", "community college transfer", "graduate degree", "bootcamp / self-taught",
     "first-generation college student", "international student", "returning / adult learner",
 ]
 
+# Multi-select (tag picker) fields on the profile form.
 TAXONOMY = {
     "availability": AVAILABILITY,
     "languages": LANGUAGES,
-    "career_interests": CAREER_INTERESTS,
-    "goals": GOALS,
     "development_areas": DEVELOPMENT_AREAS,
-    "career_outlook": CAREER_OUTLOOK,
-    "seniority": SENIORITY,
-    "mentoring_style": MENTORING_STYLE,
-    "company_types": COMPANY_TYPES,
+    "goals": GOALS,
     "education_paths": EDUCATION_PATHS,
 }

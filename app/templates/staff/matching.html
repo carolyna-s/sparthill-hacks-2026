@@ -35,7 +35,7 @@
 {% for u in unmatched %}
   <div class="border-t py-3">
     <p class="font-medium text-sm mb-1">{{ u.name }}</p>
-    <div class="mb-2">{{ tags(u.profile.career_interests + u.profile.goals + u.profile.development_areas) }}</div>
+    <div class="mb-2">{{ tags(([u.profile.industry] if u.profile.industry else []) + u.profile.goals + u.profile.development_areas) }}</div>
     <table class="w-full text-sm">
       {% for c in rankings[u.id] %}
       <tr class="align-top">

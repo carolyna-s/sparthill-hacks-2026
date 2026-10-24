@@ -15,10 +15,15 @@ def test_healthz(client):
 
 def test_mentee_intake_flow(client):
     client.post("/register", data={"role": "mentee", "name": "New Person", "email": "new@x.org",
-                                   "password": "longenough"})
-    client.post("/profile", data={"career_interests": ["design", "not-a-real-tag"], "goals": ["switch careers"]})
+                                   "password": "longenough", "school": "State University"})
+    client.post("/profile", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
+                                  "industry": "  software   DEVELOPMENT ", "looking_for": "Interview practice"})
     user = db.session.query(User).filter_by(email="new@x.org").one()
-    assert user.profile.career_interests == ["design"]
+    assert user.profile.school == "State University"
+    assert user.profile.goals == ["switch careers"]
+    assert user.profile.goals_other == "write a book"
+    assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
+    assert user.profile.looking_for == "Interview practice"
 
     answers = {"why": "a", "success": "b", "commitment": "4"}
     client.post("/apply", data={**answers, "action": "submit"})
@@ -30,12 +35,11 @@ def test_mentee_intake_flow(client):
     assert user.application.status == "draft"  # no availability or language yet
 
     resp = client.post("/profile", data={"availability": ["Monday - morning", "Funday - noon"],
-                                         "languages": ["Spanish"], "seniority": ["senior (7-15 years)",
-                                                                                 "executive (15+ years)"],
-                                         "school": "State University", "prefers_alumni": "1"})
+                                         "languages": ["Spanish"], "industry": "Marine Robotics",
+                                         "prefers_alumni": "1"})
     assert resp.headers["Location"].endswith("/apply")
     assert user.profile.availability == ["Monday - morning"]
-    assert user.profile.seniority == ["senior (7-15 years)", "executive (15+ years)"]
+    assert user.profile.industry == "Marine Robotics"  # not a suggestion: kept as typed
     assert user.profile.prefers_alumni
 
     client.post("/apply", data={**answers, "action": "submit"})
@@ -43,9 +47,15 @@ def test_mentee_intake_flow(client):
     assert user.application.status == "submitted"
 
 
-def test_profile_requires_hard_filters_and_mentor_has_one_seniority(client):
+def test_register_requires_school(client):
+    client.post("/register", data={"role": "mentee", "name": "No School", "email": "ns@x.org",
+                                   "password": "longenough", "school": "  "})
+    assert db.session.query(User).filter_by(email="ns@x.org").first() is None
+
+
+def test_profile_requires_availability_not_language(client):
     client.post("/register", data={"role": "mentor", "name": "New Mentor", "email": "nm@x.org",
-                                   "password": "longenough"})
+                                   "password": "longenough", "school": "City College"})
     resp = client.post("/profile", data={})
     assert resp.headers["Location"].endswith("/profile")  # availability missing: stay on the form
 
@@ -53,11 +63,6 @@ def test_profile_requires_hard_filters_and_mentor_has_one_seniority(client):
     assert resp.headers["Location"].endswith("/apply")  # language is optional
     user = db.session.query(User).filter_by(email="nm@x.org").one()
     assert user.profile.languages == ["English"]
-
-    client.post("/profile", data={"availability": ["Friday - afternoon"], "languages": ["English"],
-                                  "seniority": ["senior (7-15 years)", "executive (15+ years)"]})
-    user = db.session.query(User).filter_by(email="nm@x.org").one()
-    assert user.profile.seniority == ["senior (7-15 years)"]
 
 
 def test_staff_pages_are_staff_only(client):

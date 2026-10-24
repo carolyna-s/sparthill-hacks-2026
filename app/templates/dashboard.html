@@ -7,7 +7,7 @@
     {% call card("Getting started") %}
     <ol class="text-sm space-y-2">
       <li>1. <a class="text-indigo-600" href="{{ url_for('intake.profile') }}">Complete your profile</a>
-        {% if current_user.profile.career_interests %}✓{% endif %}</li>
+        {% if current_user.profile.availability %}✓{% endif %}</li>
       <li>2. <a class="text-indigo-600" href="{{ url_for('intake.agreements') }}">Sign agreements</a>
         {% if not unsigned %}✓{% else %}<span class="text-amber-700">({{ unsigned|length }} to sign)</span>{% endif %}</li>
       <li>3. <a class="text-indigo-600" href="{{ url_for('intake.apply') }}">Submit your application</a>

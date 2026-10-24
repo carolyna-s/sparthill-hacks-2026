@@ -41,12 +41,14 @@ def register():
             abort(400)
         if len(request.form["password"]) < 8:
             flash("Password must be at least 8 characters.", "error")
+        elif not request.form.get("school", "").strip():
+            flash("Enter your school.", "error")
         elif db.session.query(User).filter_by(email=email).first():
             flash("An account with that email already exists.", "error")
         else:
             user = User(email=email, name=request.form["name"].strip(), role=role)
             user.set_password(request.form["password"])
-            user.profile = Profile()
+            user.profile = Profile(school=request.form.get("school", "").strip())
             db.session.add(user)
             db.session.commit()
             login_user(user)

@@ -1,6 +1,6 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `97249da0ff3f`;
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `2c50da610bc6`;
 Supabase `sparthill-hackathon` is at `31ed905ca990` as of Oct 23, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
@@ -23,13 +23,15 @@ mean *what I want*; for mentors, *what I have/offer*.
 | --- | --- |
 | `headline`, `bio`, `organization` | free display text |
 | `major`, `concentration` | single values |
-| `pathways`, `career_interests`, `goals`, `development_areas` | lists |
+| `pathways`, `goals`, `development_areas` | lists |
+| `career_interests` | legacy list, replaced by `industry`; no longer written |
 | `years_experience` | integer |
 | `languages`, `language_required` | list + "must share a language" flag. Matching treats a shared language as a hard filter; blank means English |
 | `availability` | hard filter: `"Monday - morning"` … `"Sunday - afternoon"`; a pair must share one slot |
-| `career_outlook`, `mentoring_style`, `company_types`, `education_paths` | soft-filter lists; scores 1 if the mentor has any of the mentee's picks |
-| `seniority` | mentee: acceptable mentor levels; mentor: own level (one value) |
-| `school`, `prefers_alumni` | mentee's school / mentor's alma mater; same-school bonus only when the mentee opts in |
+| `industry` | soft filter: one of `taxonomy.INDUSTRIES`, or whatever the user typed; matched ignoring case |
+| `education_paths` | soft-filter list; scores 1 if the mentor has any of the mentee's picks |
+| `school`, `prefers_alumni` | asked at sign-up. Mentee's school / mentor's alma mater; same-school bonus only when the mentee opts in |
+| `interests`, `goals_other`, `looking_for` | free text (interests, goals beyond the presets, what the mentee wants / mentor offers); shown to staff, not scored yet |
 | `organizations` | mentee: target orgs; mentor: current/past employers |
 | `clubs_prior`, `clubs_current` | lists |
 | `student_groups`, `groups_opt_in` | sensitive; only used for matching if opted in; never shown to the other party |

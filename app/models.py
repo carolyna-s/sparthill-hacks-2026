@@ -79,7 +79,7 @@ class Profile(db.Model):
     headline = db.Column(db.String(200), default="")
     bio = db.Column(db.Text, default="")
     organization = db.Column(db.String(200), default="")
-    career_interests = db.Column(db.JSON, default=list, nullable=False)
+    career_interests = db.Column(db.JSON, default=list, nullable=False)  # legacy; replaced by `industry`
     goals = db.Column(db.JSON, default=list, nullable=False)
     development_areas = db.Column(db.JSON, default=list, nullable=False)
     capacity = db.Column(db.Integer, default=1, nullable=False)  # mentors: max active mentees
@@ -97,14 +97,15 @@ class Profile(db.Model):
     groups_opt_in = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     # Sign-up matching form (app/taxonomy.py). Hard filters: availability, languages.
     availability = _tags()  # "Monday - morning", ...
-    # Soft filters, alongside career_interests / goals / development_areas above.
-    career_outlook = _tags()
-    seniority = _tags()  # mentee: preferred mentor seniority; mentor: own (one value)
-    mentoring_style = _tags()
-    company_types = _tags()  # mentee: interested in; mentor: has worked at
+    # Soft filters, alongside goals / development_areas above.
+    industry = db.Column(db.String(120))  # taxonomy.INDUSTRIES value, or whatever the user typed
     education_paths = _tags()
-    school = db.Column(db.String(200))  # mentee: current school; mentor: alma mater
+    school = db.Column(db.String(200))  # asked at sign-up. mentee: current school; mentor: alma mater
     prefers_alumni = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
+    # Free-text answers: shown to staff, not scored yet (semantic score, docs/PLAN.md §4.4).
+    interests = db.Column(db.Text)
+    goals_other = db.Column(db.Text)  # goals beyond the presets
+    looking_for = db.Column(db.Text)  # mentee: wants from the program; mentor: hopes to offer
     linkedin_url = db.Column(db.String(300))
     resume_key = db.Column(db.String(500))  # storage key of the uploaded resume / LinkedIn PDF
     resume_file_name = db.Column(db.String(255))

@@ -10,7 +10,7 @@ from .matching import HARD_FILTER_DEFAULTS
 from .extensions import db
 from .models import Agreement, AgreementSignature, Application, Cohort, Profile, utcnow
 from .program import unsigned_agreements
-from .taxonomy import DAYS, PERIODS, TAXONOMY
+from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY
 
 bp = Blueprint("intake", __name__)
 
@@ -39,6 +39,12 @@ def missing_profile_fields(p: Profile) -> list[str]:
     return [label for dim, label in REQUIRED.items() if not getattr(p, dim)]
 
 
+def canonical_industry(typed: str) -> str:
+    """A suggestion's own spelling if the user typed one (any case), else what they typed."""
+    typed = " ".join(typed.split())[:120]
+    return next((i for i in INDUSTRIES if i.lower() == typed.lower()), typed)
+
+
 @bp.route("/profile", methods=["GET", "POST"])
 @role_required("mentee", "mentor")
 def profile():
@@ -47,13 +53,14 @@ def profile():
         p.headline = request.form.get("headline", "").strip()
         p.bio = request.form.get("bio", "").strip()
         p.organization = request.form.get("organization", "").strip()
-        p.school = request.form.get("school", "").strip()
+        p.industry = canonical_industry(request.form.get("industry", ""))
+        for field in ("interests", "goals_other", "looking_for"):
+            setattr(p, field, request.form.get(field, "").strip())
         for dim, allowed in TAXONOMY.items():
             setattr(p, dim, [t for t in request.form.getlist(dim) if t in allowed])
         p.languages = p.languages or HARD_FILTER_DEFAULTS["languages"]
         if current_user.role == "mentor":
             p.capacity = max(1, min(5, int(request.form.get("capacity") or 1)))
-            p.seniority = p.seniority[:1]  # a mentor has one seniority level
         else:
             p.prefers_alumni = bool(request.form.get("prefers_alumni"))
         db.session.commit()
@@ -63,7 +70,7 @@ def profile():
             return redirect(url_for("intake.profile"))
         flash("Profile saved.", "ok")
         return redirect(url_for("intake.apply"))
-    return render_template("intake/profile.html", p=p, days=DAYS, periods=PERIODS)
+    return render_template("intake/profile.html", p=p, days=DAYS, periods=PERIODS, industries=INDUSTRIES)
 
 
 @bp.route("/apply", methods=["GET", "POST"])
