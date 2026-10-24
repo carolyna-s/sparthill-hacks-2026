@@ -11,7 +11,7 @@ much of the cycle automated as possible. Staff keep the final say on every match
 | --- | --- | --- |
 | Intake | Separate mentor and mentee sign-up, profiles, applications, agreements, resume/LinkedIn-PDF import | Profiles, applications, and agreements are built. LinkedIn PDF import is built; resume import is planned (§6) |
 | Matching | 4-stage pipeline: hard filters → structured score → embedding similarity → LLM context scaling | Schema live in Supabase. Basic engine built; pipeline planned (§4) |
-| Match review | Staff approve or deny every proposed pair. A deny requires feedback, which the algorithm learns from | Basic approve/reject built. Percent view, deny feedback, and load view planned (§5) |
+| Match review | Staff approve or deny every proposed pair. A deny requires feedback, which the algorithm learns from | Approve, and deny with required reason + explanation (stored, pair excluded from re-proposal) built, plus a per-participant dashboard view for staff. Percent view, auto re-match, and load view planned (§5) |
 | Program tools | Prework/postwork, check-ins, reminders, messaging, **automated match emails**, **mentee confirm/withdraw** | Built except match emails and confirmation (§5.5–5.6) |
 | Resources | Tab of school resources for mentees | Planned (§7) |
 | Site assistant | LLM chatbot that helps users find their way around | Planned (§8) |
@@ -208,8 +208,9 @@ One row per proposed pair:
 
 Denying opens a short form, and the deny doesn't go through without it:
 
-- **Reason** (dropdown): different interests or pathway · experience gap wrong · language or
-  communication · personality or fit concern · mentor overloaded · conflict of interest · other
+- **Reason** (dropdown): gut feeling · different interests or pathway · experience gap wrong ·
+  language or communication · personality or fit concern · mentor overloaded · conflict of
+  interest · other
 - **Comment** (required, free text): e.g. "Mentee wants industry research, mentor is pure startup."
 
 Then, automatically:
