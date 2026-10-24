@@ -57,8 +57,8 @@ go with them.
 | `routes.py` | `/`, `/dashboard`, `/healthz`, `/internal/cron/reminders` | Landing page, each user's dashboard, health check, and the cron endpoint that sends scheduled reminders | `landing.html`, `dashboard.html` |
 | `auth.py` | `/register`, `/login`, `/logout` | Email and password accounts, plus the `role_required(...)` decorator that limits a page to certain roles | `auth/` |
 | `intake.py` | `/profile/<step>`, `/apply`, `/agreements` | The 4-step sign-up form (`STEPS`; steps 1-2 required, see `REQUIRED`), application review and submit (the questions are in `QUESTIONS`), and signing digital agreements | `intake/` |
-| `program.py` | `/events`, `/matches`, `/messages/<id>`, `/feedback` | Events with prework and postwork uploads, attendance check-ins, messages between a mentor and mentee, and feedback ratings | `program/` |
-| `staff.py` | `/staff/...` | Staff-only pages: reviewing applicants, approving matches, creating events, and reports | `staff/` |
+| `program.py` | `/modules`, `/messages/<id>`, `/meetings/<id>`, `/feedback` | Modules with prework and postwork uploads, attendance check-ins, messages between a mentor and mentee, mentor-scheduled meetings, and feedback ratings | `program/` |
+| `staff.py` | `/staff/...` | Staff-only pages: reviewing applicants, approving matches, creating modules, and reports | `staff/` |
 
 ### Core logic (no routes)
 
@@ -83,7 +83,7 @@ These files switch between a local and an AWS implementation based on settings i
 ### Other
 
 - `seed.py`: demo data loaded by `flask seed`, including staff, 4 mentors, 5 mentees, a
-  cohort, an agreement, and events. Every demo account's password is `password123`.
+  cohort, an agreement, and a sample module. Every demo account's password is `password123`.
 - `templates/base.html`: the layout and navigation every page extends.
 - `templates/_macros.html`: reusable form and UI pieces.
 - `templates/staff/_summary.html`: a partial that several staff pages include.

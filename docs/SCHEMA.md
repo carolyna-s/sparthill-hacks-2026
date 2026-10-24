@@ -113,7 +113,7 @@ pathways → their major), `sort`, `is_active`. Unique per (kind, value, parent)
 
 ## Program
 
-**event**: `title`, `description`, `starts_at`, `location`, `checkin_code`,
+**event**: a module (shown as **Modules** in the app). `title`, `description`, `starts_at`, `location`, `checkin_code`,
 `prework_prompt` / `prework_due`, `postwork_prompt` / `postwork_due`.
 
 **submission**: `event_id` + `user_id` + `kind` (`prework` | `postwork`; unique), `body`,
@@ -122,6 +122,9 @@ pathways → their major), `sort`, `is_active`. Unique per (kind, value, parent)
 **attendance**: `event_id` + `user_id` (unique), `checked_in_at`.
 
 **message**: `match_id`, `sender_id`, `body`, `sent_at`, `read_at`.
+
+**meeting**: a mentor-scheduled meeting, shown on both people's dashboard calendars. `match_id`,
+`starts_at`, `note`, `created_by_id`, `created_at`.
 
 **feedback**: satisfaction ratings. `user_id`, `event_id` *or* `match_id`, `rating` (1–5), `comment`.
 

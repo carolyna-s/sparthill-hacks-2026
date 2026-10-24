@@ -3,8 +3,8 @@
 import io
 
 from app.extensions import db
-from app.models import (Application, Attendance, Event, Match, MatchExclusion, MatchFeedback, Message,
-                        ReminderLog, Submission, User)
+from app.models import (Application, Attendance, Event, Match, MatchExclusion, MatchFeedback, Meeting, Message,
+                        ReminderLog, Submission, User, utcnow)
 from app.reminders import send_due_reminders
 
 from .conftest import login
@@ -110,7 +110,7 @@ def test_staff_pages_are_staff_only(client):
     assert client.get("/staff/").status_code == 403
     login(client, "staff.admin@example.org")
     for path in ["/staff/", "/staff/applications", "/staff/people", "/staff/matching", "/staff/reports",
-                 "/staff/events/new"]:
+                 "/staff/modules/new"]:
         assert client.get(path).status_code == 200, path
 
 
@@ -130,13 +130,48 @@ def test_review_match_and_message(client):
 
     login(client, match.mentee.email)
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
+    page = client.get(f"/messages/{match.id}")
+    assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
+    assert b"Sent" in page.data and b"Seen" not in page.data
     login(client, match.mentor.email)
     page = client.get(f"/messages/{match.id}")
     assert b"Hi!" in page.data
+    assert f"Messages with your mentee, {match.mentee.name}".encode() in page.data
+    assert b"Active now" in page.data  # the mentee was just here
     assert db.session.query(Message).one().read_at is not None
+    login(client, match.mentee.email)
+    assert b"Seen just now" in client.get(f"/messages/{match.id}").data
 
     outsider = next(m for m in proposed if not m.includes(match.mentor))
     assert client.get(f"/messages/{outsider.id}").status_code == 404
+
+
+def test_mentor_schedules_meeting_on_both_calendars(client):
+    from app import matching
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    db.session.commit()
+    when = utcnow().replace(hour=15, minute=30, second=0, microsecond=0)
+
+    login(client, match.mentee.email)
+    assert client.post(f"/messages/{match.id}/meetings", data={"starts_at": when.isoformat()}).status_code == 403
+    login(client, match.mentor.email)
+    client.post(f"/messages/{match.id}/meetings", data={"starts_at": when.strftime("%Y-%m-%dT%H:%M"), "note": "Zoom"})
+    meeting = db.session.query(Meeting).one()
+    assert meeting.starts_at == when
+    assert b"Scheduled a meeting" in client.get(f"/messages/{match.id}").data
+    assert f"Meeting with {match.mentee.name}".encode() in client.get("/dashboard").data
+
+    login(client, match.mentee.email)
+    dashboard = client.get("/dashboard").data
+    assert f"Meeting with {match.mentor.name}".encode() in dashboard
+    assert b"To do" in dashboard
+    login(client, match.mentor.email)
+    assert b"To do" not in client.get("/dashboard").data  # modules' to-do is for mentees
+
+    client.post(f"/meetings/{meeting.id}/cancel")
+    assert db.session.query(Meeting).count() == 0
 
 
 def test_reject_match_needs_reason_and_is_never_reproposed(client):
@@ -177,21 +212,48 @@ def test_staff_people_dashboards(client):
 def test_event_submission_checkin_feedback(client):
     event = db.session.query(Event).first()
     login(client, "jordan.kim@example.org")
-    client.post(f"/events/{event.id}/submit/prework",
+    client.post(f"/modules/{event.id}/submit/prework",
                 data={"body": "my goals", "file": (io.BytesIO(b"pdf"), "goals.pdf")},
                 content_type="multipart/form-data")
     sub = db.session.query(Submission).one()
     assert sub.file_name == "goals.pdf"
     assert client.get(f"/submissions/{sub.id}/file").data == b"pdf"
 
-    client.post(f"/events/{event.id}/checkin", data={"code": "wrong"})
+    client.post(f"/modules/{event.id}/checkin", data={"code": "wrong"})
     assert db.session.query(Attendance).count() == 0
-    client.post(f"/events/{event.id}/checkin", data={"code": event.checkin_code.lower()})
+    client.post(f"/modules/{event.id}/checkin", data={"code": event.checkin_code.lower()})
     assert db.session.query(Attendance).count() == 1
 
     client.post("/feedback", data={"event_id": event.id, "rating": 4})
     login(client, "staff.admin@example.org")
     assert b"4.0" in client.get("/staff/reports").data
+
+
+def test_mentor_sees_assignments_and_mentee_submissions(client):
+    from app import matching
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    db.session.commit()
+    event = db.session.query(Event).first()
+
+    login(client, match.mentee.email)
+    client.post(f"/modules/{event.id}/submit/prework",
+                data={"body": "my resume", "file": (io.BytesIO(b"pdf"), "resume.pdf")},
+                content_type="multipart/form-data")
+    sub = db.session.query(Submission).one()
+
+    login(client, match.mentor.email)
+    page = client.get(f"/modules/{event.id}").data
+    assert b"my resume" in page and b"resume.pdf" in page
+    assert b'name="body"' not in page  # read-only: no submission form
+    assert b"1/1 mentees submitted" in client.get("/modules").data
+    assert client.get(f"/submissions/{sub.id}/file").data == b"pdf"
+    assert client.post(f"/modules/{event.id}/submit/prework", data={"body": "x"}).status_code == 403
+
+    other_mentor = next(u for u in db.session.query(User).filter_by(role="mentor") if u.id != match.mentor_id)
+    login(client, other_mentor.email)
+    assert client.get(f"/submissions/{sub.id}/file").status_code == 404
 
 
 def test_reminders_are_sent_once(client):
