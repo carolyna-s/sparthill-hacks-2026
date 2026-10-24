@@ -33,7 +33,7 @@ def due_reminders() -> list[tuple[User, str, str, str]]:
             due = getattr(event, f"{kind}_due")
             if now <= due <= soon:
                 out.append((user, f"{kind}:{event.id}", f"{kind.capitalize()} due soon: {event.title}",
-                            f"Due {due:%b %d %H:%M}. Submit at {cfg['BASE_URL']}/events/{event.id}"))
+                            f"Due {due:%b %d %H:%M}. Submit at {cfg['BASE_URL']}/modules/{event.id}"))
 
     cutoff = now - timedelta(hours=cfg["UNREAD_MESSAGE_HOURS"])
     unread = (db.session.query(Message).join(Match, Match.id == Message.match_id)

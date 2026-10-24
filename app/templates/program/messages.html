@@ -1,41 +1,72 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, input_cls %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-5">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</h1>
-<div class="grid md:grid-cols-3 gap-5">
-<div class="md:col-span-2">
-{% call card() %}
-<div class="space-y-3 mb-4 max-h-[60vh] overflow-y-auto">
-  {% for msg in thread %}
-    {% set mine = msg.sender_id == current_user.id %}
-    <div class="flex {{ 'justify-end' if mine }}">
-      <div class="max-w-[75%] rounded-lg px-3 py-2 text-sm {{ 'bg-brand-600 text-white' if mine else 'bg-slate-100' }}">
-        <div class="whitespace-pre-line">{{ msg.body }}</div>
-        <div class="text-[11px] opacity-70 mt-1">{{ msg.sender.name }} · {{ msg.sent_at.strftime('%b %d %H:%M') }}</div>
-      </div>
-    </div>
-  {% else %}<p class="text-sm text-slate-500">No messages yet. Say hello!</p>{% endfor %}
-</div>
 {% if m.includes(current_user) %}
-<form method="post" class="flex gap-2">
+  {% set other = m.other(current_user) %}
+  <h1 class="text-2xl font-semibold">Messages with your {{ 'mentor' if current_user.id == m.mentee_id else 'mentee' }}, {{ other.name }}</h1>
+  <p class="text-sm text-slate-500 mb-5">
+    {% if not other.last_seen_at %}Not active yet
+    {% elif (now - other.last_seen_at).total_seconds() < 300 %}<span class="text-emerald-600">● Active now</span>
+    {% else %}Last seen {{ other.last_seen_at | ago }}{% endif %}
+  </p>
+{% else %}
+  <h1 class="text-2xl font-semibold mb-5">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</h1>
+{% endif %}
+<div class="max-w-3xl">
+{% call card("Meetings") %}
+<ul class="divide-y divide-slate-100 mb-1">
+  {% for mt in meetings %}
+    <li class="flex items-center gap-3 py-2 text-sm">
+      <span class="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+      <span class="flex-1"><span class="font-medium">{{ mt.starts_at.strftime('%a, %b %d at %I:%M %p') }}</span>
+        {% if mt.note %}<span class="text-slate-500"> · {{ mt.note }}</span>{% endif %}</span>
+      {% if current_user.id == m.mentor_id %}
+        <form method="post" action="{{ url_for('program.cancel_meeting', meeting_id=mt.id) }}"
+              onsubmit="return confirm('Cancel this meeting?')">
+          {{ csrf() }}<button class="text-xs text-slate-500 hover:text-red-600">Cancel</button>
+        </form>
+      {% endif %}
+    </li>
+  {% else %}
+    <li class="py-2 text-sm text-slate-500">
+      {% if current_user.id == m.mentor_id %}No meeting scheduled. Agree on a time below, then add it here.
+      {% elif current_user.id == m.mentee_id %}No meeting scheduled yet. Your mentor will set one; it'll show on your dashboard calendar.
+      {% else %}No meeting scheduled.{% endif %}
+    </li>
+  {% endfor %}
+</ul>
+{% if current_user.id == m.mentor_id %}
+<form method="post" action="{{ url_for('program.schedule_meeting', match_id=m.id) }}" class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100">
+  {{ csrf() }}
+  <input type="datetime-local" name="starts_at" required class="{{ input_cls() }} sm:w-auto">
+  <input name="note" maxlength="200" placeholder="Where / agenda (optional)" class="{{ input_cls() }} sm:flex-1 sm:w-auto">
+  {{ btn("Schedule") }}
+</form>
+{% endif %}
+{% endcall %}
+{% call card() %}
+{% if m.includes(current_user) %}
+<form method="post" class="flex gap-2 mb-5">
   {{ csrf() }}
   <textarea name="body" rows="2" required class="{{ input_cls() }}" placeholder="Write a message"></textarea>
   {{ btn("Send") }}
 </form>
 {% endif %}
+<ul class="divide-y divide-slate-100">
+  {% for msg in thread %}
+    {% set mine = msg.sender_id == current_user.id %}
+    <li class="py-3">
+      <div class="flex items-baseline justify-between gap-3 text-xs text-slate-500">
+        <span class="font-medium {{ 'text-brand-600' if mine else 'text-slate-700' }}">{{ 'You' if mine else msg.sender.name }}</span>
+        <span title="{{ msg.sent_at.strftime('%b %d, %Y %H:%M') }} UTC">{{ msg.sent_at | ago }}</span>
+      </div>
+      <div class="text-sm whitespace-pre-line mt-1">{{ msg.body }}</div>
+      {% if mine %}
+        <div class="text-[11px] text-slate-400 mt-1">{% if msg.read_at %}Seen {{ msg.read_at | ago }}{% else %}Sent{% endif %}</div>
+      {% endif %}
+    </li>
+  {% else %}<li class="text-sm text-slate-500 py-3">No messages yet. Say hello!</li>{% endfor %}
+</ul>
 {% endcall %}
-</div>
-{% if m.includes(current_user) %}
-<div>
-{% call card("Rate this match") %}
-<form method="post" action="{{ url_for('program.feedback') }}" class="space-y-2">
-  {{ csrf() }}<input type="hidden" name="match_id" value="{{ m.id }}">
-  <div class="flex gap-3 text-sm">{% for r in range(1, 6) %}<label><input type="radio" name="rating" value="{{ r }}" required> {{ r }}</label>{% endfor %}</div>
-  <textarea name="comment" rows="2" placeholder="Optional comment" class="{{ input_cls() }}"></textarea>
-  {{ btn("Send", "secondary") }}
-</form>
-{% endcall %}
-</div>
-{% endif %}
 </div>
 {% endblock %}

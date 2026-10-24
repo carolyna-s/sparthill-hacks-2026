@@ -1,4 +1,4 @@
-"""Staff dashboard: applicant review, participant dashboards, match approval, events, and
+"""Staff dashboard: applicant review, participant dashboards, match approval, modules, and
 aggregate reporting."""
 
 from __future__ import annotations
@@ -200,14 +200,14 @@ def decide_match(match_id: int, decision: str):
     return redirect(url_for("staff.matching_page"))
 
 
-# --- events ----------------------------------------------------------------------
+# --- modules -----------------------------------------------------------------------
 
 def _dt(name: str) -> datetime | None:
     value = request.form.get(name)
     return datetime.fromisoformat(value) if value else None
 
 
-@bp.route("/events/new", methods=["GET", "POST"])
+@bp.route("/modules/new", methods=["GET", "POST"])
 def new_event():
     if request.method == "POST":
         db.session.add(Event(
@@ -218,8 +218,8 @@ def new_event():
             postwork_prompt=request.form.get("postwork_prompt", ""), postwork_due=_dt("postwork_due"),
         ))
         db.session.commit()
-        flash("Event created.", "ok")
-        return redirect(url_for("staff.reports"))
+        flash("Module created.", "ok")
+        return redirect(url_for("program.modules"))
     return render_template("staff/event_form.html")
 
 

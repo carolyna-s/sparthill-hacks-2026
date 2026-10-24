@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
 
 from . import embeddings, linkedin, storage
@@ -13,6 +13,35 @@ from .program import unsigned_agreements
 from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY
 
 bp = Blueprint("intake", __name__)
+
+
+@bp.before_app_request
+def require_profile_setup():
+    """Keep first-time mentor and mentee accounts on their current onboarding step."""
+    if not current_user.is_authenticated or current_user.role not in ("mentee", "mentor"):
+        return None
+    if profile_setup_complete(current_user):
+        session.pop(_onboarding_session_key(current_user), None)
+        return None
+    if request.endpoint in {"static", "auth.logout", "intake.profile", "intake.profile_step"}:
+        return None
+    key = _onboarding_session_key(current_user)
+    page = {
+        "main.landing": "Home",
+        "main.dashboard": "Dashboard",
+        "intake.profile": "Profile",
+        "intake.apply": "Application",
+        "intake.agreements": "Agreements",
+        "program.matches": "Messages",
+        "program.events": "Events",
+    }.get(request.endpoint, "this page")
+    flash(f"Please complete onboarding to access {page}", "error")
+    step = session.get(key)
+    if not isinstance(step, int) or not 1 <= step <= len(STEPS):
+        step = _resume_profile_step(current_user)
+        session[key] = step
+    return redirect(url_for("intake.profile_step", step=step))
+
 
 # Application questions per role: (key, label). Answers are stored as JSON, so editing this
 # list needs no migration.
@@ -70,6 +99,45 @@ def signup_next_step(user: User) -> str | None:
     return None
 
 
+def missing_setup_answers(user: User) -> list[str]:
+    """Return required free-response prompts left blank during account setup."""
+    profile = user.profile
+    prompts = Industry_Relevant_Prompt_Data[user.role]
+    missing = [
+        label for field, label in prompts.items()
+        if not (getattr(profile, field) or "").strip()
+    ]
+    application = user.application
+    if application is None:
+        return missing + [label for _, label in Personality_Questions_Data[user.role]]
+    if application.status != "draft":
+        return []
+    answers = application.answers or {}
+    missing.extend(
+        label for key, label in Personality_Questions_Data[user.role]
+        if not (answers.get(key) or "").strip()
+    )
+    return missing
+
+
+def profile_setup_complete(user: User) -> bool:
+    """Whether this account has supplied the required profile and application answers."""
+    if user.role not in ("mentee", "mentor") or user.profile is None:
+        return True
+    if user.application is not None and user.application.status != "draft":
+        return True
+    return not missing_fields(user) and not missing_setup_answers(user)
+
+
+def _onboarding_session_key(user: User) -> str:
+    return f"onboarding_step_{user.id}"
+
+
+def _resume_profile_step(user: User) -> int:
+    unfinished = [step for step, check, _ in REQUIRED if not check(user)]
+    return min(unfinished) if unfinished else 4
+
+
 def canonical_industry(typed: str) -> str:
     """A suggestion's own spelling if the user typed one (any case), else what they typed."""
     typed = " ".join(typed.split())[:120]
@@ -86,9 +154,13 @@ def _application(user: User) -> Application:
 @bp.get("/profile")
 @role_required("mentee", "mentor")
 def profile():
-    """Resume the form at the first required step that isn't done."""
-    unfinished = [s for s, ok, _ in REQUIRED if not ok(current_user)]
-    return redirect(url_for("intake.profile_step", step=min(unfinished, default=1)))
+    """Resume the same onboarding step, or begin at the first required step."""
+    key = _onboarding_session_key(current_user)
+    step = session.get(key)
+    if not isinstance(step, int) or not 1 <= step <= len(STEPS):
+        step = 1 if profile_setup_complete(current_user) else _resume_profile_step(current_user)
+    session[key] = step
+    return redirect(url_for("intake.profile_step", step=step))
 
 
 @bp.route("/profile/<int:step>", methods=["GET", "POST"])
@@ -99,6 +171,7 @@ def profile_step(step: int):
     if step > 2 and missing_fields(current_user):
         flash("Finish the required steps first: add " + " and ".join(missing_fields(current_user)) + ".", "error")
         return redirect(url_for("intake.profile"))
+    session[_onboarding_session_key(current_user)] = step
     if request.method == "GET":
         return _render_step(step)
 
@@ -107,15 +180,20 @@ def profile_step(step: int):
         embeddings.refresh(current_user.profile)
     db.session.commit()
     if request.form.get("nav") == "back":
-        return redirect(url_for("intake.profile_step", step=step - 1))
+        previous_step = step - 1
+        session[_onboarding_session_key(current_user)] = previous_step
+        return redirect(url_for("intake.profile_step", step=previous_step))
     missing = missing_fields(current_user, step)
     if missing:
         flash("To continue, add " + " and ".join(missing) + ".", "error")
     if missing or not ok:
         return redirect(url_for("intake.profile_step", step=step))
     if step == len(STEPS):
+        session.pop(_onboarding_session_key(current_user), None)
         return redirect(url_for("intake.apply"))
-    return redirect(url_for("intake.profile_step", step=step + 1))
+    next_step = step + 1
+    session[_onboarding_session_key(current_user)] = next_step
+    return redirect(url_for("intake.profile_step", step=next_step))
 
 
 def _save_about(user: User) -> bool:
@@ -191,6 +269,10 @@ def _save_questions(user: User) -> bool:
     if app_row.status == "draft":
         app_row.answers = {k: request.form.get(k, "").strip()
                            for k, _ in Personality_Questions_Data[user.role]}
+    missing = missing_setup_answers(user)
+    if missing:
+        flash("Answer each question before continuing: " + " ".join(missing), "error")
+        return False
     return True
 
 

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="max-w-3xl mx-auto">
 <h1 class="text-2xl font-semibold mb-1">Your profile</h1>
-<p class="text-sm text-slate-500 mb-6">Steps marked {{ req() }} are required to be matched. The rest are optional but help us find you a better fit.</p>
+<p class="text-sm text-slate-500 mb-6">Complete the required questions in steps 1, 2, and 4 to finish account setup. Preferences in step 3 are optional.</p>
 
 {# Stepper: required steps, a dashed divider, then the optional ones. #}
 <nav aria-label="Sign-up steps" class="mb-6">
@@ -28,7 +28,7 @@
                        {{ 'bg-brand-600 text-white' if n == step else 'bg-emerald-100 text-emerald-800' if done.get(n) else 'bg-slate-200 text-slate-600' }}">
             {{ '✓' if done.get(n) and n != step else n }}</span>
           <span class="text-xs leading-tight {{ 'font-medium' if n == step else 'text-slate-600' }}">
-            {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }}{% if n <= 2 %} {{ req() }}{% endif %}</span>
+            {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }}{% if n <= 2 or n == 4 %} {{ req() }}{% endif %}</span>
         </a>
       </li>
     {% endfor %}
@@ -121,18 +121,18 @@
   {% call card("In your own words") %}
     <p class="text-sm text-slate-500 mb-4">Staff read these when reviewing applications and making matches. A few sentences each is plenty.</p>
     {% if Industry_Relevant_Prompt_Data.interests %}
-    {% call field(Industry_Relevant_Prompt_Data.interests) %}
-      <textarea name="interests" rows="2" class="{{ input_cls() }}">{{ p.interests or '' }}</textarea>
+    {% call field(Industry_Relevant_Prompt_Data.interests, required=True) %}
+      <textarea name="interests" rows="2" class="{{ input_cls() }}" required>{{ p.interests or '' }}</textarea>
     {% endcall %}
     {% endif %}
     {% if Industry_Relevant_Prompt_Data.looking_for %}
-    {% call field(Industry_Relevant_Prompt_Data.looking_for) %}
-      <textarea name="looking_for" rows="3" class="{{ input_cls() }}">{{ p.looking_for or '' }}</textarea>
+    {% call field(Industry_Relevant_Prompt_Data.looking_for, required=True) %}
+      <textarea name="looking_for" rows="3" class="{{ input_cls() }}" required>{{ p.looking_for or '' }}</textarea>
     {% endcall %}
     {% endif %}
     {% for key, label in Personality_Questions_Data %}
-      {% call field(label) %}
-        <textarea name="{{ key }}" rows="3" class="{{ input_cls() }}" {{ 'disabled' if locked_answers }}>{{ application.answers.get(key, '') if application else '' }}</textarea>
+      {% call field(label, required=True) %}
+        <textarea name="{{ key }}" rows="3" class="{{ input_cls() }}" required {{ 'disabled' if locked_answers }}>{{ application.answers.get(key, '') if application else '' }}</textarea>
       {% endcall %}
     {% endfor %}
     {% if locked_answers %}<p class="text-xs text-slate-500">Your application is {{ application.status }}, so its answers can't be changed.</p>{% endif %}

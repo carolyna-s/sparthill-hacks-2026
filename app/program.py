@@ -1,15 +1,18 @@
-"""Program tools: events with prework/postwork, attendance check-ins, messaging, feedback."""
+"""Program tools: modules (sessions with prework/postwork), attendance check-ins, messaging, meetings, feedback.
+
+Modules are stored in the `event` table.
+"""
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from . import storage
 from .extensions import db
-from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback, Match, Message,
+from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback, Match, Meeting, Message,
                      Submission, User, utcnow)
 
 bp = Blueprint("program", __name__)
@@ -24,13 +27,24 @@ def unsigned_agreements(user: User) -> list[Agreement]:
             if a.id not in signed]
 
 
-def upcoming_events(limit: int = 5) -> list[Event]:
+def upcoming_modules(limit: int = 5) -> list[Event]:
     return (db.session.query(Event).filter(Event.starts_at >= utcnow() - timedelta(hours=12))
             .order_by(Event.starts_at).limit(limit).all())
 
 
+def meetings_for(user: User, upcoming_only: bool = False) -> list[Meeting]:
+    """Meetings in the user's approved matches."""
+    q = (db.session.query(Meeting).join(Match, Meeting.match_id == Match.id)
+         .filter(Match.status == "approved", (Match.mentee_id == user.id) | (Match.mentor_id == user.id)))
+    if upcoming_only:
+        q = q.filter(Meeting.starts_at >= utcnow() - timedelta(hours=1))
+    return q.order_by(Meeting.starts_at).all()
+
+
 def todo_for(user: User) -> list[tuple[Event, str]]:
-    """Prework/postwork the user still owes, with a due date in the future or recently past."""
+    """Module prework/postwork a mentee still owes, with a due date in the future or recently past."""
+    if user.role != "mentee":
+        return []
     done = {(s.event_id, s.kind) for s in db.session.query(Submission).filter_by(user_id=user.id)}
     now, out = utcnow(), []
     for e in db.session.query(Event).order_by(Event.starts_at):
@@ -41,6 +55,11 @@ def todo_for(user: User) -> list[tuple[Event, str]]:
     return out
 
 
+def mentees_of(mentor: User) -> list[User]:
+    """The mentor's mentees in approved matches."""
+    return [m.mentee for m in db.session.query(Match).filter_by(mentor_id=mentor.id, status="approved")]
+
+
 def _approved_match(match_id: int) -> Match:
     m = db.get_or_404(Match, match_id)
     if m.status != "approved" or not (m.includes(current_user) or current_user.is_staff):
@@ -48,31 +67,43 @@ def _approved_match(match_id: int) -> Match:
     return m
 
 
-# --- events --------------------------------------------------------------------
+# --- modules -------------------------------------------------------------------
 
-@bp.get("/events")
+@bp.get("/modules")
 @login_required
-def events():
+def modules():
     rows = db.session.query(Event).order_by(Event.starts_at).all()
-    return render_template("program/events.html", events=rows)
+    subs = {(s.event_id, s.kind): s for s in db.session.query(Submission).filter_by(user_id=current_user.id)}
+    # Mentors: how many of their mentees have submitted each item.
+    mentees = mentees_of(current_user) if current_user.role == "mentor" else []
+    counts: dict[tuple[int, str], int] = {}
+    for s in db.session.query(Submission).filter(Submission.user_id.in_([u.id for u in mentees])):
+        counts[(s.event_id, s.kind)] = counts.get((s.event_id, s.kind), 0) + 1
+    return render_template("program/modules.html", modules=rows, subs=subs, mentees=mentees, counts=counts)
 
 
-@bp.get("/events/<int:event_id>")
+@bp.get("/modules/<int:event_id>")
 @login_required
-def event(event_id: int):
+def module(event_id: int):
     e = db.get_or_404(Event, event_id)
     subs = {s.kind: s for s in db.session.query(Submission).filter_by(event_id=e.id, user_id=current_user.id)}
     attended = db.session.query(Attendance).filter_by(event_id=e.id, user_id=current_user.id).first()
     fb = db.session.query(Feedback).filter_by(event_id=e.id, user_id=current_user.id).first()
-    return render_template("program/event.html", e=e, subs=subs, attended=attended, feedback=fb)
+    mentees = mentees_of(current_user) if current_user.role == "mentor" else []
+    mentee_subs = {(s.user_id, s.kind): s for s in db.session.query(Submission)
+                   .filter(Submission.event_id == e.id, Submission.user_id.in_([u.id for u in mentees]))}
+    return render_template("program/module.html", e=e, subs=subs, attended=attended, feedback=fb,
+                           mentees=mentees, mentee_subs=mentee_subs)
 
 
-@bp.post("/events/<int:event_id>/submit/<kind>")
+@bp.post("/modules/<int:event_id>/submit/<kind>")
 @login_required
 def submit(event_id: int, kind: str):
     e = db.get_or_404(Event, event_id)
     if kind not in Submission.KINDS or not getattr(e, f"{kind}_prompt"):
         abort(404)
+    if current_user.role != "mentee":  # mentors see what's assigned and their mentees' work, but don't submit
+        abort(403)
     sub = (db.session.query(Submission).filter_by(event_id=e.id, user_id=current_user.id, kind=kind).first()
            or Submission(event_id=e.id, user_id=current_user.id, kind=kind))
     sub.body = request.form.get("body", "").strip()
@@ -84,19 +115,21 @@ def submit(event_id: int, kind: str):
     db.session.add(sub)
     db.session.commit()
     flash(f"{kind.capitalize()} submitted.", "ok")
-    return redirect(url_for("program.event", event_id=e.id))
+    return redirect(url_for("program.module", event_id=e.id))
 
 
 @bp.get("/submissions/<int:submission_id>/file")
 @login_required
 def submission_file(submission_id: int):
     sub = db.get_or_404(Submission, submission_id)
-    if not sub.file_key or not (sub.user_id == current_user.id or current_user.is_staff):
+    allowed = (sub.user_id == current_user.id or current_user.is_staff
+               or sub.user_id in {u.id for u in mentees_of(current_user)})
+    if not sub.file_key or not allowed:
         abort(404)
     return storage.serve(sub.file_key, sub.file_name or "upload")
 
 
-@bp.post("/events/<int:event_id>/checkin")
+@bp.post("/modules/<int:event_id>/checkin")
 @login_required
 def checkin(event_id: int):
     e = db.get_or_404(Event, event_id)
@@ -106,7 +139,7 @@ def checkin(event_id: int):
         db.session.add(Attendance(event_id=e.id, user_id=current_user.id))
         db.session.commit()
         flash("Checked in.", "ok")
-    return redirect(url_for("program.event", event_id=e.id))
+    return redirect(url_for("program.module", event_id=e.id))
 
 
 @bp.post("/feedback")
@@ -130,13 +163,15 @@ def feedback():
 
 # --- messaging -----------------------------------------------------------------
 
-@bp.get("/matches")
+@bp.get("/messages/")
 @login_required
-def matches():
+def inbox():
     rows = (db.session.query(Match)
             .filter(Match.status == "approved",
                     (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id)).all())
-    return render_template("program/matches.html", matches=rows)
+    if len(rows) == 1:
+        return redirect(url_for("program.messages", match_id=rows[0].id))
+    return redirect(url_for("main.dashboard"))  # no match yet, or several: pick one from the dashboard
 
 
 @bp.route("/messages/<int:match_id>", methods=["GET", "POST"])
@@ -156,5 +191,42 @@ def messages(match_id: int):
          .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
          .update({"read_at": utcnow()}))
         db.session.commit()
-    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at).all()
-    return render_template("program/messages.html", m=m, thread=thread)
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).all()
+    meetings = (db.session.query(Meeting).filter(Meeting.match_id == m.id, Meeting.starts_at >= utcnow() - timedelta(hours=1))
+                .order_by(Meeting.starts_at).all())
+    return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow())
+
+
+@bp.post("/messages/<int:match_id>/meetings")
+@login_required
+def schedule_meeting(match_id: int):
+    """The mentor picks a date and time; it lands on both calendars and is announced in the thread."""
+    m = _approved_match(match_id)
+    if current_user.id != m.mentor_id:
+        abort(403)
+    try:
+        starts_at = datetime.fromisoformat(request.form.get("starts_at", ""))
+    except ValueError:
+        flash("Pick a date and time for the meeting.", "error")
+        return redirect(url_for("program.messages", match_id=m.id))
+    note = request.form.get("note", "").strip()[:200]
+    db.session.add(Meeting(match_id=m.id, starts_at=starts_at, note=note, created_by_id=current_user.id))
+    db.session.add(Message(match_id=m.id, sender_id=current_user.id,
+                           body=f"📅 Scheduled a meeting for {starts_at:%a, %b %d at %I:%M %p}." + (f" {note}" if note else "")))
+    db.session.commit()
+    flash("Meeting scheduled.", "ok")
+    return redirect(url_for("program.messages", match_id=m.id))
+
+
+@bp.post("/meetings/<int:meeting_id>/cancel")
+@login_required
+def cancel_meeting(meeting_id: int):
+    mt = db.get_or_404(Meeting, meeting_id)
+    if current_user.id != mt.match.mentor_id:
+        abort(403)
+    db.session.add(Message(match_id=mt.match_id, sender_id=current_user.id,
+                           body=f"Cancelled the meeting on {mt.starts_at:%a, %b %d at %I:%M %p}."))
+    db.session.delete(mt)
+    db.session.commit()
+    flash("Meeting cancelled.", "ok")
+    return redirect(url_for("program.messages", match_id=mt.match_id))

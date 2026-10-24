@@ -35,6 +35,7 @@ class User(UserMixin, db.Model):
     name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(10), nullable=False)  # mentee | mentor | staff | backend
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime)  # bumped on each request, at most once a minute
 
     profile = db.relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     application = db.relationship("Application", back_populates="user", uselist=False,
@@ -278,6 +279,19 @@ class Message(db.Model):
     read_at = db.Column(db.DateTime)
 
     sender = db.relationship("User")
+
+
+class Meeting(db.Model):
+    """A mentor/mentee meeting the mentor schedules from the message thread. Shows on both calendars."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("match.id"), nullable=False, index=True)
+    starts_at = db.Column(db.DateTime, nullable=False)
+    note = db.Column(db.String(200), default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    match = db.relationship("Match")
 
 
 class Feedback(db.Model):
