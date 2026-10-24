@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, csrf, field, input_cls, status_badge %}
+{% from "_macros.html" import card, csrf, field, input_cls, application_status_badge %}
 {% set p = current_user.profile %}
 {% set editing = editing|default(false) %}
 {% set control_cls = input_cls() ~ (' bg-slate-100 text-slate-500 cursor-not-allowed' if not editing else '') %}
@@ -7,7 +7,7 @@
 <div class="max-w-3xl mx-auto">
   <div class="flex items-center justify-between gap-3 mb-5">
     <h1 class="text-2xl font-semibold">Submitted {{ "Mentor" if current_user.role == "mentor" else "Mentee" }} Application</h1>
-    {{ status_badge(application.status) }}
+    {{ application_status_badge(application.status) }}
   </div>
 
   {% call card("Application information") %}
@@ -65,7 +65,8 @@
     <fieldset class="mb-4">
       <legend class="text-sm font-medium mb-2">Languages you're comfortable meeting in</legend>
       <div class="flex flex-wrap gap-2">
-        {% for value in taxonomy.languages %}
+        <span class="text-sm border rounded-full px-3 py-1 bg-slate-300 text-slate-700 border-slate-300" title="Included for everyone">English</span>
+        {% for value in taxonomy.languages|reject("equalto", "English") %}
         <label data-choice-label
                data-edit-class="text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600"
                class="{{ 'text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600' if editing else 'text-sm border rounded-full px-3 py-1 bg-slate-300 text-slate-700 border-slate-300' if value in p.languages else 'text-sm border rounded-full px-3 py-1 bg-slate-100 text-slate-400 border-slate-200' }}">

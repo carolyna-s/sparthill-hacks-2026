@@ -28,3 +28,24 @@ def test_failed_ses_send_is_logged_and_retried(app, monkeypatch):
 
     app.config["EMAIL_BACKEND"] = "console"
     assert send_due_reminders() == len(failed)  # the next run retries them
+
+
+def test_smtp_backend_sends_and_logs(app, monkeypatch):
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            assert (host, port) == ("smtp.gmail.com", 587)
+        def __enter__(self): return self
+        def __exit__(self, *exc): return False
+        def starttls(self, context): pass
+        def login(self, user, password): assert (user, password) == ("me@gmail.com", "app-pw")
+        def send_message(self, msg): sent.append(msg)
+
+    import app.notify as notify
+    monkeypatch.setattr(notify.smtplib, "SMTP", FakeSMTP)
+    app.config.update(EMAIL_BACKEND="smtp", SMTP_USERNAME="me@gmail.com", SMTP_PASSWORD="app-pw")
+    assert notify.send_email("you@example.org", "Hello", "Body\n", key="test:1")
+    assert sent[0]["To"] == "you@example.org" and sent[0]["Subject"] == "Hello"
+    row = db.session.query(EmailLog).filter_by(key="test:1").one()
+    assert (row.backend, row.status) == ("smtp", "sent")

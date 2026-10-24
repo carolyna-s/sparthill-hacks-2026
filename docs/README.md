@@ -3,7 +3,7 @@
 A web app for running a mentorship program: mentors and mentees apply and sign agreements,
 a weighted matching engine ranks mentors for each mentee, matched pairs work through modules
 (pre-work, a live session with check-in, post-work), message each other and schedule meetings,
-and staff review applicants, approve matches, and track participation. Admins manage accounts.
+and staff view applicants, approve matches, and track participation. Admins manage accounts.
 
 One Flask service serves the whole app. Data lives in **Supabase Postgres** and uploads in
 **Supabase Storage**; there is no local-database mode (tests use a throwaway SQLite file). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
@@ -19,8 +19,8 @@ created by an admin.
    a password (8+ characters).
 2. **Onboard.** Until onboarding is done, every page except the profile steps sends you back to
    the step you were on ("Please complete onboarding to access …"). In order:
-   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required, since
-     matching filters on them), then *Preferences* and *In your own words* (optional). A LinkedIn
+   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required:
+     matching filters on time slots and favors a shared language), then *Preferences* and *In your own words* (optional). A LinkedIn
      PDF can be uploaded to pre-fill suggestions.
    - **Agreements**: sign each active agreement for your role by typing your name.
    - **Application**: answer the application questions and submit.
@@ -48,6 +48,9 @@ created by an admin.
 6. **Reminders by email** (via `flask send-reminders` or the cron endpoint), each sent at most
    once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), and messages
    left unread for a while.
+7. **Instant emails** (templates in `app/templates/email/`): both people get one when their match is
+   confirmed, and 3 minutes after a message the recipient gets "You have new messages from X" if
+   they haven't opened the thread yet, at most once an hour per thread.
 
 ### Staff
 
@@ -164,10 +167,10 @@ All demo accounts use the password `password123`.
 | Admin | `backend.admin@example.org` |
 | Staff | `staff.admin@example.org` (also `jamie.torres@example.org`, never logged in; `dana.whitfield@example.org`, deactivated) |
 | Mentor | `priya.raman@example.org`, `marcus.lee@example.org`, `elena.ortiz@example.org`, `sam.okafor@example.org` |
-| Mentee | `jordan.kim@example.org`, `avery.patel@example.org`, `riley.chen@example.org`, `taylor.brooks@example.org`, `morgan.diaz@example.org` (pending review) |
+| Mentee | `jordan.kim@example.org`, `avery.patel@example.org`, `riley.chen@example.org`, `taylor.brooks@example.org`, `morgan.diaz@example.org` |
 
 Quick tour:
-1. As **staff**: go to **Applicants** and accept Morgan, then **Matching** → *Auto-propose* → approve.
+1. As **staff**: go to **Matching** → *Auto-propose* → approve.
 2. As jordan.kim's mentor: open **Messages** and schedule a meeting. As **jordan.kim**: see it on the
    dashboard calendar, open **Modules** → *Updating your Resume*, submit pre-work, and check in with code `RES01`.
    Post-work stays locked until the session's start time.
@@ -202,12 +205,12 @@ app/
   embeddings.py   OpenAI embeddings of free-text answers, for the text part of the score
   program.py      modules, pre-/post-work, check-ins, messaging, meetings
   reminders.py    idempotent reminder sweep
-  staff.py        applicant review, people, match approval, modules, reports
+  staff.py        applicants, people, match approval, modules, reports
   admin.py        account metrics, user audit, (de)activation, creating staff accounts
   routes.py       landing, dashboard, application edits, /healthz, cron endpoint
   storage.py      file uploads (Supabase Storage; local disk in tests)
   types.py        vector column type (pgvector on Postgres, JSON on SQLite)
-  notify.py       email (console or SES), each logged to email_log
+  notify.py       email (console, SMTP or SES), each logged to email_log
   seed.py         demo data
   templates/      Jinja + Tailwind via CDN (no frontend build)
 migrations/       Alembic migrations
@@ -226,7 +229,7 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 | `SUPABASE_URL` | prefilled in `.env.example` | project API URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | uploads fail | the project's secret / service_role key (server-only) |
 | `SUPABASE_STORAGE_BUCKET` | `uploads` | another private bucket |
-| `EMAIL_BACKEND` | `console` | `ses` |
+| `EMAIL_BACKEND` | `console` (log only) | `smtp` (Gmail: set `MAIL_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD` = app password) or `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |
 | `OPENAI_API_KEY` | text answers not used in matching | OpenAI API key (embeddings only), then run `flask embed` once |

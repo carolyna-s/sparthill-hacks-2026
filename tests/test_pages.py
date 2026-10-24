@@ -4,6 +4,7 @@ import pytest
 
 from app import matching
 from app.extensions import db
+from app.models import User
 
 from .conftest import login
 
@@ -25,6 +26,19 @@ def test_public_pages(client):
         assert client.get(path).status_code == 200, path
 
 
+@pytest.mark.parametrize(("status", "label"), [("accepted", "Approved"), ("rejected", "Rejected")])
+def test_dashboard_application_status_labels(client, status, label):
+    application = db.session.query(User).filter_by(email="morgan.diaz@example.org").one().application
+    application.status = status
+    db.session.commit()
+
+    login(client, "morgan.diaz@example.org")
+    for path in ("/dashboard", "/dashboard/application", "/apply"):
+        response = client.get(path, follow_redirects=True)
+        assert response.status_code == 200, path
+        assert f">{label}</span>".encode() in response.data, path
+
+
 @pytest.mark.parametrize("email", ["jordan.kim@example.org", "priya.raman@example.org",
                                    "morgan.diaz@example.org"])  # matched mentee, mentor, pending mentee
 def test_participant_pages(client, approved, email):
@@ -38,7 +52,32 @@ def test_staff_detail_pages(client, approved):
     login(client, "staff.admin@example.org")
     for path in ["/modules", "/modules/1", f"/messages/{approved[0].id}", "/staff/applications/1",
                  "/staff/matching"]:
-        assert client.get(path).status_code == 200, path
+        assert client.get(path).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("email", "path", "label"),
+    [
+        ("jordan.kim@example.org", "/dashboard", "Dashboard"),
+        ("jordan.kim@example.org", "/modules", "Modules"),
+        ("staff.admin@example.org", "/staff/", "Dashboard"),
+        ("staff.admin@example.org", "/staff/applications", "Applicants"),
+        ("staff.admin@example.org", "/staff/matching", "Matching"),
+        ("staff.admin@example.org", "/modules", "Modules"),
+        ("staff.admin@example.org", "/staff/reports", "Reports"),
+    ],
+)
+def test_navigation_bolds_current_section(client, email, path, label):
+    import re
+
+    login(client, email)
+    response = client.get(path, follow_redirects=True)
+
+    assert response.status_code == 200
+    active_links = re.findall(
+        rb'<a[^>]*aria-current="page"[^>]*>(.*?)</a>', response.data, re.DOTALL
+    )
+    assert [link.decode().strip() for link in active_links] == [label], path
 
 
 def test_admin_logistics_page_is_admin_only(client):

@@ -14,6 +14,12 @@ LANGUAGES = [
     "English", "Spanish", "Mandarin", "Cantonese", "Vietnamese", "Tagalog", "Korean", "Hindi",
     "Punjabi", "Arabic", "French", "Portuguese", "Japanese", "Russian", "ASL",
 ]
+BASE_LANGUAGE = "English"  # everyone has it; the rest are extras (multilingual or comfortable in another)
+
+
+def with_base_language(languages):
+    """English first, then any additional languages, without repeats."""
+    return list(dict.fromkeys([BASE_LANGUAGE, *languages]))
 
 # --- soft filters: weighted into the match score -------------------------------
 

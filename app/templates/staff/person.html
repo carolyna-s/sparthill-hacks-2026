@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import card, status_badge %}
-{% from "staff/_match.html" import profile_facts, denial with context %}
+{% from "staff/_match.html" import profile_facts, score_or_flag, denial with context %}
 {% set u = d.user %}
 {% block content %}
 <a href="{{ url_for('staff.applications') }}" class="text-sm text-slate-500">← Applicants</a>
@@ -22,7 +22,7 @@
       {% for m in d.matches %}
         <div class="border-t first:border-t-0 py-2">
           <div class="flex justify-between items-center text-sm">
-            <span>{{ m.other(u).name }} {{ status_badge(m.status) }} <span class="text-slate-500">· score {{ m.score }}</span></span>
+            <span>{{ m.other(u).name }} {{ status_badge(m.status) }} <span class="text-slate-500">· {% if m.score is none %}{{ score_or_flag(none) }}{% else %}score {{ m.score }}{% endif %}</span></span>
             <span class="space-x-3">
               <a class="text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ 'Review' if m.status == 'proposed' else 'Details' }}</a>
               {% if m.status == 'approved' %}<a class="text-indigo-600" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>{% endif %}

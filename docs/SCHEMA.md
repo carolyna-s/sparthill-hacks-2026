@@ -29,7 +29,7 @@ mean *what I want*; for mentors, *what I have/offer*.
 | `pathways`, `goals`, `development_areas` | lists |
 | `career_interests` | legacy list, replaced by `industry`; no longer written |
 | `years_experience` | integer |
-| `languages`, `language_required` | list + "must share a language" flag. Matching treats a shared language as a hard filter; blank means English |
+| `languages`, `language_required` | list + "must share a language" flag (not used by matching). A shared language other than English is a score bonus; no shared language never lowers the score |
 | `availability` | hard filter: `"Monday - morning"` … `"Sunday - night"` (morning, afternoon, evening, night); a pair must share one slot |
 | `industry` | soft filter: one of `taxonomy.INDUSTRIES`, or whatever the user typed; matched ignoring case |
 | `education_paths` | soft-filter list; scores 1 if the mentor has any of the mentee's picks |
@@ -75,7 +75,7 @@ embedded), `embedding_model`, `updated_at`.
 | --- | --- |
 | `mentee_id`, `mentor_id`, `cohort_id` | |
 | `status` | `proposed` → `released` \| `rejected` (staff decision); `released` → `approved` (mentee confirms; capacity overrides also need mentor confirmation) \| `rejected` (a participant declines) \| `withdrawn` (mentee leaves program); `approved` → `withdrawn` \| `ended`. Only confirmed matches are active; rejected/withdrawn pairs aren't re-proposed |
-| `score` | final 0–100 shown to staff |
+| `score` | final 0–100 shown to staff. NULL when the pair fails a hard filter ("needs staff approval"; first in the review queue), with the would-be score in `score_breakdown.fit_if_compatible` |
 | `structured_score`, `semantic_score`, `context_multiplier` | stage 2, stage 3, stage 4 (docs/PLAN.md §4) |
 | `score_breakdown` | per-feature similarities and shared values |
 | `ai_review` | `{note, flags, confidence, feedback_ids_used}` |
@@ -145,4 +145,4 @@ so failed ones are retried on the next run.
 
 **email_log**: every outbound email (`app/notify.py`). `user_id` (null if not a user),
 `to_email`, `subject`, `body`, `key` (same as `reminder_log.key`, e.g. `message:42`), `backend`
-(`console` | `ses`), `status` (`logged` = console only, `sent`, `failed`), `error`, `created_at`.
+(`console` | `smtp` | `ses`), `status` (`logged` = console only, `sent`, `failed`), `error`, `created_at`.

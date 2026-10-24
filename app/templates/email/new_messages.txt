@@ -1,0 +1,9 @@
+You have new messages from {{ sender.name }}!
+Hi {{ user.name }},
+
+{{ sender.name }} sent you {{ "a new message" if unread == 1 else unread ~ " new messages" }}.
+
+Read and reply:
+{{ base_url }}/messages/{{ match.id }}
+
+Spartan Mentorship Program

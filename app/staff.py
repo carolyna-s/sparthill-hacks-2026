@@ -10,7 +10,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from flask_login import current_user
 from sqlalchemy import func
 
-from . import matching, program
+from . import matching, notify, program
 from .audit import record_change
 from .auth import role_required
 from .extensions import db
@@ -19,6 +19,11 @@ from .models import (Application, Attendance, Cohort, Event, Feedback, Match, Ma
                      MatchFeedback, MatchOverrideRequest, Message, Submission, User, utcnow)
 
 bp = Blueprint("staff", __name__, url_prefix="/staff")
+
+# Review order for proposals: flagged pairs (NULL score: no shared time slot) first, since they
+# need a staff decision, then best score first. Explicit because SQLite and Postgres put NULLs
+# at opposite ends by default.
+QUEUE_ORDER = (Match.score.desc().nulls_first(), Match.id.asc())
 
 # Labels for MatchFeedback.REASONS["deny"], in the order staff see them.
 DENY_REASONS = {
@@ -137,8 +142,7 @@ def matching_page():
     mentors = {}
     if accepted_mentors:
         mentors = {u.id: u for u in db.session.query(User).filter(User.id.in_(accepted_mentors))}
-    proposed = (db.session.query(Match).filter_by(status="proposed")
-                .order_by(Match.score.desc(), Match.id.asc()).all())
+    proposed = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).all()
     awaiting_confirmation = (db.session.query(Match).filter_by(status="released")
                              .order_by(Match.released_at.desc()).all())
     approved = db.session.query(Match).filter_by(status="approved").order_by(Match.decided_at.desc()).all()
@@ -178,15 +182,13 @@ def match_review(match_id: int):
 
 
 def _next_queued_proposal(match: Match) -> Match | None:
-    """Find the next pending row in the same stable score order used by Matching."""
-    later = (db.session.query(Match).filter_by(status="proposed")
-             .filter((Match.score < match.score)
-                     | ((Match.score == match.score) & (Match.id > match.id)))
-             .order_by(Match.score.desc(), Match.id.asc()).first())
-    if later:
-        return later
-    return (db.session.query(Match).filter_by(status="proposed")
-            .order_by(Match.score.desc(), Match.id.asc()).first())
+    """Find the next pending row in the same stable order used by Matching (QUEUE_ORDER)."""
+    if match.score is None:
+        after = Match.score.isnot(None) | (Match.score.is_(None) & (Match.id > match.id))
+    else:
+        after = (Match.score < match.score) | ((Match.score == match.score) & (Match.id > match.id))
+    pending = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER)
+    return pending.filter(after).first() or pending.first()
 
 
 def _queue_destination(match: Match) -> str:
@@ -316,6 +318,7 @@ def manual_override():
                   f"Manually matched {mentee.name} with {mentor.name}, bypassing matchmaker ranking.",
                   target_user_id=mentee.id)
     db.session.commit()
+    notify.notify_match_released(match)
     flash(f"Manual match created: {mentee.name} → {mentor.name}.", "ok")
     return redirect(url_for("staff.matching_page"))
 
@@ -384,6 +387,8 @@ def decide_match(match_id: int, decision: str):
     if decision == "approve":
         _release_match(m)
     db.session.commit()
+    if decision == "approve":
+        notify.notify_match_released(m)
     done = {"approve": f"Sent {pair} to the mentee for confirmation.", "end": f"Ended {pair}.",
             "reject": f"Rejected {pair}. They won't be proposed together again.",
             "reopen": f"Reopened {pair}."}[decision]

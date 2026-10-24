@@ -85,10 +85,10 @@ def load_user(user_id: str) -> User | None:
     return user if user and user.is_active else None  # deactivating signs them out everywhere
 
 
-def _tags():
+def _tags(default=list):
     """A JSON list column that defaults to [] (server default too, so adding it to a table
     with existing rows works)."""
-    return db.Column(db.JSON, default=list, server_default="[]", nullable=False)
+    return db.Column(db.JSON, default=default, server_default="[]", nullable=False)
 
 
 class Profile(db.Model):
@@ -112,7 +112,7 @@ class Profile(db.Model):
     concentration = db.Column(db.String(120))
     pathways = _tags()
     years_experience = db.Column(db.Integer)
-    languages = _tags()
+    languages = _tags(default=lambda: ["English"])  # the usual answer; blank still matches as English
     language_required = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     organizations = _tags()  # mentee: target orgs; mentor: current/past employers
     clubs_prior = _tags()
@@ -221,7 +221,9 @@ class Match(db.Model):
     mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     cohort_id = db.Column(db.Integer, db.ForeignKey("cohort.id"))
     status = db.Column(db.String(10), default="proposed", nullable=False, index=True)
-    score = db.Column(db.Float, nullable=False)  # final score shown to staff
+    # Final score shown to staff. NULL: fails a hard filter (needs staff approval); the would-be
+    # score is score_breakdown["fit_if_compatible"].
+    score = db.Column(db.Float)
     score_breakdown = db.Column(db.JSON, default=dict, nullable=False)
     structured_score = db.Column(db.Float)  # hard-question features
     semantic_score = db.Column(db.Float)  # soft-answer embedding similarity

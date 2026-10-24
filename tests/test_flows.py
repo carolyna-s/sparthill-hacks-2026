@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import (Application, Attendance, AuditLog, Event, Feedback, Match, MatchExclusion, MatchFeedback,
                         MatchOverrideRequest, Meeting, Message, ReminderLog, Submission, User, utcnow)
 from app.reminders import send_due_reminders
+from app.staff import QUEUE_ORDER
 
 from .conftest import login
 
@@ -133,7 +134,7 @@ def test_dashboard_application_edits_answers_without_changing_status(client):
     }
     assert user.profile.organization == "Updated Org"
     assert user.profile.availability == ["Monday - night"]
-    assert user.profile.languages == ["Spanish"]
+    assert user.profile.languages == ["English", "Spanish"]  # English is always included
     assert user.profile.industry == "Software Development"
     assert user.profile.interests == "Updated interests"
     assert user.profile.prefers_alumni
@@ -251,7 +252,7 @@ def test_profile_back_saves_without_requiring(client):
     resp = client.post("/profile/2", data={"nav": "back", "languages": ["Korean"]})
     assert resp.headers["Location"].endswith("/profile/1")
     user = db.session.query(User).filter_by(email="bp@x.org").one()
-    assert user.profile.languages == ["Korean"]
+    assert user.profile.languages == ["English", "Korean"]
 
 
 def test_register_requires_school(client):
@@ -270,10 +271,11 @@ def test_required_fields_block_next(client):
     user = db.session.query(User).filter_by(email="nm@x.org").one()
     assert user.profile.school == "CC"
 
+    resp = client.post("/profile/2", data={"languages": ["Spanish"]})
+    assert resp.headers["Location"].endswith("/profile/2")  # availability is required too
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
-    assert resp.headers["Location"].endswith("/profile/2")  # language is required too
-    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"]})
-    assert resp.headers["Location"].endswith("/profile/3")
+    assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
+    assert user.profile.languages == ["English"]
     client.post("/profile/3", data={})
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
@@ -308,6 +310,8 @@ def test_review_match_and_message(client):
     assert match.status == "released"
 
     login(client, match.mentee.email)
+    inbox = client.get("/messages/")
+    assert inbox.status_code == 200 and b"awaiting confirmation" in inbox.data
     dashboard = client.get("/dashboard")
     assert b"Action required:" in dashboard.data
     assert b"Confirm or decline this match" in dashboard.data
@@ -316,6 +320,7 @@ def test_review_match_and_message(client):
     assert b"Confirm match" in notification.data and b"Decline match" in notification.data
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
     assert match.status == "approved" and match.mentee_confirmed_at is not None
+    assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
     assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
@@ -423,8 +428,7 @@ def test_reject_match_needs_reason_and_is_never_reproposed(client):
 def test_match_review_queue_advances_until_all_proposals_are_done(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
-    ordered = (db.session.query(Match).filter_by(status="proposed")
-               .order_by(Match.score.desc(), Match.id.asc()).all())
+    ordered = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).all()
     first = ordered[0]
     review = client.get(f"/staff/matches/{first.id}?action=approve&queue=1")
     assert b"Exit review queue" in review.data
@@ -445,6 +449,26 @@ def test_match_review_queue_advances_until_all_proposals_are_done(client):
     assert response.location.endswith("/staff/matching")
     assert b"All proposed matches have been reviewed." in client.get(response.location).data
     assert db.session.query(Match).filter_by(status="proposed").count() == 0
+
+
+def test_flagged_proposals_head_the_queue_as_needing_staff_approval(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    scored = db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).all()
+    flagged = scored.pop()  # lowest score: flagging it must move it to the front
+    flagged.score_breakdown = {**flagged.score_breakdown, "filters_failed": ["availability"],
+                               "fit_if_compatible": flagged.score}
+    flagged.score = None
+    db.session.commit()
+
+    assert db.session.query(Match).filter_by(status="proposed").order_by(*QUEUE_ORDER).first() == flagged
+    page = client.get("/staff/matching").data
+    assert b"Needs staff approval" in page
+    assert page.index(flagged.mentee.name.encode()) < page.index(scored[0].mentee.name.encode())
+    assert b"Fit if they could meet" in client.get(f"/staff/matches/{flagged.id}").data
+
+    response = client.post(f"/staff/matches/{flagged.id}/approve", data={"queue": "1"})
+    assert response.location.endswith(f"/staff/matches/{scored[0].id}?queue=1")
 
 
 def test_staff_manual_match_override_requires_capacity_and_logs_change(client):
@@ -613,21 +637,19 @@ def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
     assert b"Mentee Withdrawn" in client.get("/staff/matching").data
 
 
-def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+def test_mentee_cannot_release_confirmed_mentor(client):
     login(client, "staff.admin@example.org")
     match = matching.propose_all()[0]
     client.post(f"/staff/matches/{match.id}/approve")
     login(client, match.mentee.email)
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    dashboard = client.get("/dashboard")
+    assert b"Release mentor" not in dashboard.data
     response = client.post(f"/matches/{match.id}/release")
 
-    assert response.status_code == 302
-    assert match.status == "withdrawn"
-    assert match.mentee_id in matching.unmatched_mentee_ids()
-    assert all(candidate.mentor_id != match.mentor_id
-               for candidate in matching.ranking_for(match.mentee_id, limit=None))
-    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
-    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+    assert response.status_code == 404
+    assert match.status == "approved"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
 
 
 def test_undo_auto_propose_and_cancel(client):
