@@ -39,3 +39,10 @@ def test_staff_detail_pages(client, approved):
     for path in ["/modules", "/modules/1", f"/messages/{approved[0].id}", "/staff/applications/1",
                  "/staff/matching"]:
         assert client.get(path).status_code == 200, path
+
+
+def test_admin_logistics_page_is_admin_only(client):
+    login(client, "staff.admin@example.org")
+    assert client.get("/admin/matching-logistics").status_code == 403
+    login(client, "backend.admin@example.org")
+    assert client.get("/admin/matching-logistics").status_code == 200

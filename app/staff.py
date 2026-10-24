@@ -11,6 +11,7 @@ from flask_login import current_user
 from sqlalchemy import func
 
 from . import matching, program
+from .audit import record_change
 from .auth import role_required
 from .extensions import db
 from .intake import Personality_Questions_Data, missing_fields
@@ -83,6 +84,9 @@ def application(app_id: int):
         before = a.status
         a.status, a.reviewed_by_id, a.reviewed_at = decision, current_user.id, utcnow()
         a.staff_notes = request.form.get("staff_notes", "")
+        record_change("application_review",
+                      f"Reviewed {a.user.name}'s application: status {before} → {decision}; staff notes updated.",
+                      target_user_id=a.user_id)
         db.session.commit()
         _offer_undo(f"{a.user.name}: {decision}.", url_for("staff.undo_application", app_id=a.id),
                     status=before)
@@ -103,7 +107,11 @@ def undo_application(app_id: int):
             Match.status.in_(("proposed", "approved"))).first():
         flash(f"{a.user.name} is already in a match. Cancel or end it before undoing the acceptance.", "error")
     else:
+        previous_status = a.status
         a.status = status
+        record_change("application_review_undo",
+                      f"Restored {a.user.name}'s application status from {previous_status} to {status}.",
+                      target_user_id=a.user_id)
         db.session.commit()
         flash(f"Undone: {a.user.name} is {status} again.", "ok")
     return redirect(url_for("staff.application", app_id=a.id))
@@ -127,8 +135,6 @@ def people():
     role = request.args.get("role") if request.args.get("role") in ("mentee", "mentor") else None
     q = request.args.get("q", "").strip()
     query = db.session.query(User).filter(User.role.in_((role,) if role else ("mentee", "mentor")))
-    if q:
-        query = query.filter(User.name.ilike(f"%{q}%") | User.email.ilike(f"%{q}%"))
     rows = [dashboard_for(u) for u in query.order_by(User.role, User.name)]
     return render_template("staff/people.html", rows=rows, role=role, q=q)
 
@@ -314,13 +320,15 @@ def _dt(name: str) -> datetime | None:
 @bp.route("/modules/new", methods=["GET", "POST"])
 def new_event():
     if request.method == "POST":
-        db.session.add(Event(
+        event = Event(
             title=request.form["title"], description=request.form.get("description", ""),
             starts_at=_dt("starts_at"), location=request.form.get("location", ""),
             checkin_code=secrets.token_hex(3).upper(),
             prework_prompt=request.form.get("prework_prompt", ""), prework_due=_dt("prework_due"),
             postwork_prompt=request.form.get("postwork_prompt", ""), postwork_due=_dt("postwork_due"),
-        ))
+        )
+        db.session.add(event)
+        record_change("module_created", f"Created module: {event.title}.")
         db.session.commit()
         flash("Module created.", "ok")
         return redirect(url_for("program.modules"))

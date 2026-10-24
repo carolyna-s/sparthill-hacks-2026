@@ -39,9 +39,10 @@
       </a>
       {% if current_user.is_authenticated %}
         {% if current_user.is_backend %}
-          <a href="{{ url_for('admin.dashboard') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
-          <a href="{{ url_for('admin.users') }}" class="text-slate-600 hover:text-brand-700">User Audit</a>
-          <a href="{{ url_for('admin.reports') }}" class="text-slate-600 hover:text-brand-700">Reports</a>
+          <a href="{{ url_for('admin.dashboard') }}" class="text-slate-600 hover:text-brand-700">Admin Dashboard</a>
+          <a href="{{ url_for('admin.users') }}" class="text-slate-600 hover:text-brand-700">Users</a>
+          <a href="{{ url_for('admin.matching_logistics') }}" class="text-slate-600 hover:text-brand-700">Matching logistics</a>
+          <a href="{{ url_for('admin.audit_logs') }}" class="text-slate-600 hover:text-brand-700">Audit Logs</a>
         {% elif current_user.is_staff %}
           <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-brand-700">Overview</a>
           <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-brand-700">Applicants</a>
@@ -112,5 +113,89 @@
       </div>
     </div>
   </footer>
+  <script>
+    document.querySelectorAll("[data-live-filter]").forEach((input) => {
+      const listName = input.dataset.liveFilter;
+      const table = document.querySelector(`[data-sortable-list="${listName}"]`);
+      if (!table) return;
+
+      const rows = Array.from(table.querySelectorAll("[data-list-row]"));
+      const emptyRow = table.querySelector("[data-no-results]");
+      const form = input.closest("form");
+      const filterRows = () => {
+        const term = input.value.trim().toLocaleLowerCase();
+        let visible = 0;
+        rows.forEach((row) => {
+          const matches = row.dataset.search.includes(term);
+          row.hidden = !matches;
+          visible += Number(matches);
+        });
+        if (emptyRow) emptyRow.hidden = visible > 0;
+
+        const url = new URL(window.location.href);
+        if (term) url.searchParams.set("q", input.value.trim());
+        else url.searchParams.delete("q");
+        window.history.replaceState({}, "", url);
+      };
+
+      input.addEventListener("input", filterRows);
+      if (form) form.addEventListener("submit", (event) => event.preventDefault());
+      document.querySelectorAll("[data-search-filter-link]").forEach((link) => {
+        link.addEventListener("click", () => {
+          const url = new URL(link.href, window.location.origin);
+          if (input.value.trim()) url.searchParams.set("q", input.value.trim());
+          else url.searchParams.delete("q");
+          link.href = url;
+        });
+      });
+      filterRows();
+
+      const body = table.querySelector("[data-sort-body]");
+      const priorities = [];
+      const sortRows = () => {
+        rows.sort((left, right) => {
+          for (const sort of priorities) {
+            const a = left.dataset[`sort${sort.key[0].toUpperCase()}${sort.key.slice(1)}`] || "";
+            const b = right.dataset[`sort${sort.key[0].toUpperCase()}${sort.key.slice(1)}`] || "";
+            if (sort.key === "matched" && (a === "2" || b === "2")) {
+              if (a !== b) return a === "2" ? 1 : -1;
+              continue;
+            }
+            const numeric = a !== "" && b !== "" && Number.isFinite(Number(a)) && Number.isFinite(Number(b));
+            const comparison = numeric ? Number(a) - Number(b) : a.localeCompare(b, undefined, {numeric: true});
+            if (comparison) return comparison * sort.direction;
+          }
+          return 0;
+        });
+        rows.forEach((row) => body.appendChild(row));
+        table.querySelectorAll("[data-sort-key]").forEach((button) => {
+          const index = priorities.findIndex((sort) => sort.key === button.dataset.sortKey);
+          button.setAttribute("aria-sort", index < 0 ? "none" : priorities[index].direction === 1 ? "ascending" : "descending");
+          const indicator = button.querySelector("[data-sort-indicator]");
+          if (indicator) indicator.remove();
+          if (index >= 0) {
+            const mark = document.createElement("span");
+            mark.dataset.sortIndicator = "";
+            mark.className = "ml-1 text-xs";
+            mark.textContent = `${priorities[index].direction === 1 ? "↑" : "↓"}${index + 1}`;
+            button.appendChild(mark);
+          }
+        });
+      };
+
+      table.querySelectorAll("[data-sort-key]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.sortKey;
+          const index = priorities.findIndex((sort) => sort.key === key);
+          if (index === 0) priorities[0].direction *= -1;
+          else {
+            if (index > 0) priorities.splice(index, 1);
+            priorities.unshift({key, direction: 1});
+          }
+          sortRows();
+        });
+      });
+    });
+  </script>
 </body>
 </html>

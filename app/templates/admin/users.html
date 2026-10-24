@@ -1,50 +1,64 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, status_badge, input_cls %}
-{% from "admin/_macros.html" import when, account_status, toggle_active with context %}
+{% from "_macros.html" import card, input_cls %}
+{% from "admin/_macros.html" import account_status, toggle_active, when with context %}
 {% block content %}
 <div class="flex justify-between items-center mb-3">
-  <h1 class="text-2xl font-semibold">User audit</h1>
+  <h1 class="text-2xl font-semibold">Users</h1>
   <a href="{{ url_for('admin.new_user') }}" class="text-sm bg-brand-600 text-white rounded px-3 py-1.5">New staff account</a>
 </div>
 <form class="flex flex-wrap gap-2 text-sm mb-5">
-  {% for r in [None, 'mentee', 'mentor', 'staff', 'backend'] %}
-    <a href="{{ url_for('admin.users', role=r, status=status, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ role_labels[r] ~ 's' if r else 'Everyone' }}</a>
+  {% for r in [None, 'mentee', 'mentor', 'staff'] %}
+    <a data-search-filter-link href="{{ url_for('admin.users', role=r, status=status, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ role_labels[r] ~ 's' if r else 'Everyone' }}</a>
   {% endfor %}
   <span class="mx-1 border-l"></span>
   {% for s, label in [(None, 'Any status'), ('active', 'Active'), ('inactive', 'Deactivated')] %}
-    <a href="{{ url_for('admin.users', role=role, status=s, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if s == status else 'border bg-white' }}">{{ label }}</a>
+    <a data-search-filter-link href="{{ url_for('admin.users', role=role, status=s, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if s == status else 'border bg-white' }}">{{ label }}</a>
   {% endfor %}
   {% if role %}<input type="hidden" name="role" value="{{ role }}">{% endif %}
   {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
-  <input name="q" value="{{ q }}" placeholder="Search name or email" class="{{ input_cls() }} max-w-xs ml-auto">
+  <input name="q" data-live-filter="admin-users" value="{{ q }}" placeholder="Search name or email" class="{{ input_cls() }} max-w-xs ml-auto">
 </form>
 {% call card() %}
 <div class="overflow-x-auto">
-<table class="w-full text-sm">
-  <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Role</th><th>Joined</th><th>Last login</th><th>Last seen</th><th>Progress</th><th>Status</th><th></th></tr></thead>
+<table class="w-full text-sm" data-sortable-list="admin-users">
+  <thead class="text-left text-slate-500"><tr>
+    <th class="py-1"><button type="button" data-sort-key="username" class="hover:text-slate-900">Username</button></th>
+    <th><button type="button" data-sort-key="role" class="hover:text-slate-900">Role</button></th>
+    <th><button type="button" data-sort-key="matched" class="hover:text-slate-900">Matched to</button></th>
+    <th><button type="button" data-sort-key="status" class="hover:text-slate-900">Account status</button></th>
+    <th><button type="button" data-sort-key="lastaccess" class="hover:text-slate-900">Last access</button></th>
+    <th><button type="button" data-sort-key="attendance" class="hover:text-slate-900">Attendance rate</button></th>
+    <th class="text-right">Account access</th>
+  </tr></thead>
+  <tbody data-sort-body>
   {% for d in rows %}
   {% set u = d.user %}
-  <tr class="border-t align-top">
+  <tr class="border-t align-top" data-list-row
+      data-search="{{ (u.name ~ ' ' ~ u.email ~ ' ' ~ role_labels[u.role] ~ ' ' ~ (d.matched_to|join(' ') if d.matched_to else 'Not matched'))|lower }}"
+      data-sort-username="{{ u.name|lower }}"
+      data-sort-role="{{ role_labels[u.role]|lower }}"
+      data-sort-matched="{{ '0' if d.matched_to else '1' if u.role != 'staff' else '2' }}"
+      data-sort-status="{{ 'active' if u.is_active else 'disabled' }}"
+      data-sort-lastaccess="{{ u.last_seen_at.isoformat() if u.last_seen_at else '' }}"
+      data-sort-attendance="{{ d.attendance_rate.rstrip('%') if d.attendance_rate.endswith('%') else '-1' }}">
     <td class="py-2"><a class="text-brand-600" href="{{ url_for('admin.user', user_id=u.id) }}">{{ u.name }}</a>
       <div class="text-xs text-slate-500">{{ u.email }}</div></td>
     <td class="py-2">{{ role_labels[u.role] }}</td>
-    <td class="py-2 whitespace-nowrap">{{ u.created_at.strftime('%b %d, %Y') }}</td>
-    <td class="py-2 whitespace-nowrap">{{ when(u.last_login_at) }}</td>
-    <td class="py-2 whitespace-nowrap">{{ when(u.last_seen_at) }}</td>
     <td class="py-2">
-      {% if d.application is defined %}
-        <div class="flex flex-wrap gap-1 items-center text-xs">
-          {% if d.missing %}<span class="text-amber-700">profile: {{ d.missing|length }} missing</span>{% else %}<span>profile ✓</span>{% endif %}
-          · {% if d.unsigned %}<span class="text-amber-700">{{ d.unsigned|length }} to sign</span>{% else %}<span>signed ✓</span>{% endif %}
-          · {{ status_badge(d.application.status) if d.application else 'no application' }}
-          {% for m in d.active %}· {{ m.other(u).name }} {{ status_badge(m.status) }}{% endfor %}
-        </div>
-      {% else %}<span class="text-slate-400">—</span>{% endif %}
+      {% if u.role != 'staff' %}
+        {% if d.matched_to %}{{ d.matched_to|join(', ') }}{% else %}<span class="text-slate-500">Not matched</span>{% endif %}
+      {% endif %}
     </td>
     <td class="py-2">{{ account_status(u) }}</td>
-    <td class="py-2 text-right">{{ toggle_active(u, next=request.full_path) }}</td>
+    <td class="py-2">
+      {{ when(u.last_seen_at) }}
+    </td>
+    <td class="py-2">{{ d.attendance_rate if u.role != 'staff' else '—' }}</td>
+    <td class="py-2 text-right whitespace-nowrap">{{ toggle_active(u, next=request.full_path) }}</td>
   </tr>
-  {% else %}<tr><td class="py-2 text-slate-500">Nobody found.</td></tr>{% endfor %}
+  {% endfor %}
+  <tr data-no-results {% if rows %}hidden{% endif %}><td colspan="7" class="py-2 text-slate-500">Nobody found.</td></tr>
+  </tbody>
 </table>
 </div>
 {% endcall %}

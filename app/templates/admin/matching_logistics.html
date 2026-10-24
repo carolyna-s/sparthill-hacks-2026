@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{% block content %}
+<h1 class="text-2xl font-semibold mb-5">Matching logistics</h1>
+
+{% call card("Staff match decisions") %}
+<p class="text-sm text-slate-500 mb-4">Accept/deny counts reflect each staff member's approved and rejected matches.</p>
+<div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-500">
+      <tr><th class="py-2">Staff account</th><th>Accept / deny</th><th>Accept rate</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set total = row.accepted + row.denied %}
+      <tr class="border-t align-top">
+        <td class="py-3">
+          <p class="font-medium">{{ row.user.name }}</p>
+          <p class="text-xs text-slate-500">{{ row.user.email }}</p>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-brand-700 hover:underline">
+              Denied applicants ({{ row.denials|length }})
+            </summary>
+            <ul class="mt-2 space-y-2 pl-4 list-disc">
+              {% for denial in row.denials %}
+              <li>
+                <span class="font-medium">{{ denial.mentee }}</span> paired with
+                <span class="font-medium">{{ denial.mentor }}</span>
+                <span class="text-slate-600">— {{ denial.reason }}</span>
+                {% if denial.comment %}<p class="text-xs text-slate-500">{{ denial.comment }}</p>{% endif %}
+              </li>
+              {% else %}
+              <li class="list-none text-slate-500">No denied applicants.</li>
+              {% endfor %}
+            </ul>
+          </details>
+        </td>
+        <td class="py-3 whitespace-nowrap">{{ row.accepted }} / {{ row.denied }}</td>
+        <td class="py-3">{{ ((row.accepted / total * 100)|round|int) if total else "—" }}{% if total %}%{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="py-3 text-slate-500">No staff accounts found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endcall %}
+{% endblock %}

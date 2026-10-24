@@ -1,7 +1,8 @@
 import logging
 
 import click
-from flask import Flask
+from flask import Flask, flash, redirect, request, session, url_for
+from flask_login import logout_user
 
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
@@ -43,9 +44,21 @@ def create_app(overrides: dict | None = None) -> Flask:
 
         from flask_login import current_user
 
-        from .models import utcnow
+        from .models import User, utcnow
+
+        if not current_user.is_authenticated and session.get("_user_id"):
+            try:
+                former_user = db.session.get(User, int(session["_user_id"]))
+            except (TypeError, ValueError):
+                former_user = None
+            if former_user is not None and not former_user.is_active:
+                logout_user()
+                flash("This account has been disabled. You have been logged out.", "error")
 
         if current_user.is_authenticated:
+            if (current_user.must_reset_password
+                    and request.endpoint not in ("auth.required_password", "auth.logout", "static")):
+                return redirect(url_for("auth.required_password"))
             now = utcnow()
             if current_user.last_seen_at is None or now - current_user.last_seen_at > timedelta(minutes=1):
                 current_user.last_seen_at = now

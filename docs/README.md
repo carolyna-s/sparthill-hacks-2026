@@ -68,12 +68,23 @@ Staff land on **Overview** and work through the cycle from the top nav:
 
 Admins can open every staff page, plus **/admin**:
 
-- **Dashboard:** account totals, logins by role over the last 7 and 30 days, accounts that never
+- **Admin Dashboard:** account totals, logins by role over the last 7 and 30 days, accounts that never
   logged in, recent activity and sign-ups, and the staff roster.
-- **User Audit:** every account with its activity. Deactivating an account signs the person out
-  everywhere, blocks login, and drops them from matching. Accounts are deactivated, never deleted.
-- **New user:** create staff or admin accounts with a temporary password to share with them.
-- **Reports:** account-level reporting.
+- **Users:** mentor, mentee, and staff accounts, match status, and disable/enable controls. Search
+  updates as you type; click column headings to sort, with the latest heading as the primary sort.
+  The list includes last access and attendance rate (check-ins divided by past modules since signup;
+  `N/A` when no past module is eligible); clicking a username opens the account editor.
+  Disabling an account signs the person out on their next request and blocks login. Accounts are
+  deactivated, never deleted.
+- **Matching logistics:** staff accept/deny counts and a dropdown of denied pairs with reasons.
+- **New staff account:** create staff accounts with a temporary password. Backend admin accounts
+  cannot be created through the interface.
+- **Audit Logs:** actor/source and descriptions of staff/admin changes, including account edits,
+  password-reset requests, application reviews, and module creation. Match proposals and decisions
+  are excluded.
+
+Admins can require a user to change their password at the next login. The user must still enter the
+current password to log in, then choose a new password of at least eight characters.
 
 ## Prerequisites
 

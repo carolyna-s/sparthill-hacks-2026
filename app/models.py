@@ -37,6 +37,7 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     last_seen_at = db.Column(db.DateTime)  # bumped on each request, at most once a minute
     last_login_at = db.Column(db.DateTime)
+    must_reset_password = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     # Admins (backend) deactivate accounts instead of deleting them. Overrides UserMixin.is_active,
     # so Flask-Login won't log an inactive user in.
     is_active = db.Column(db.Boolean, default=True, server_default=db.true(), nullable=False)
@@ -59,6 +60,21 @@ class User(UserMixin, db.Model):
     @property
     def is_backend(self) -> bool:
         return self.role == "backend"
+
+
+class AuditLog(db.Model):
+    """A staff/admin change record. Matching records are intentionally kept out of this log."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    actor_role = db.Column(db.String(10), nullable=False)
+    target_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    action = db.Column(db.String(80), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
+
+    actor = db.relationship("User", foreign_keys=[actor_id])
+    target_user = db.relationship("User", foreign_keys=[target_user_id])
 
 
 @login_manager.user_loader

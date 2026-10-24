@@ -4,17 +4,34 @@
 <h1 class="text-2xl font-semibold mb-3">People</h1>
 <form class="flex flex-wrap gap-2 text-sm mb-5">
   {% for r in [None, 'mentee', 'mentor'] %}
-    <a href="{{ url_for('staff.people', role=r, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ r ~ 's' if r else 'everyone' }}</a>
+    <a data-search-filter-link href="{{ url_for('staff.people', role=r, q=q or None) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ r ~ 's' if r else 'everyone' }}</a>
   {% endfor %}
   {% if role %}<input type="hidden" name="role" value="{{ role }}">{% endif %}
-  <input name="q" value="{{ q }}" placeholder="Search name or email" class="{{ input_cls() }} max-w-xs ml-auto">
+  <input name="q" data-live-filter="staff-people" value="{{ q }}" placeholder="Search name or email" class="{{ input_cls() }} max-w-xs ml-auto">
 </form>
 {% call card() %}
-<table class="w-full text-sm">
-  <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Role</th><th>Profile</th><th>Agreements</th><th>Application</th><th>Match</th><th>To do</th></tr></thead>
+<table class="w-full text-sm" data-sortable-list="staff-people">
+  <thead class="text-left text-slate-500"><tr>
+    <th class="py-1"><button type="button" data-sort-key="username" class="hover:text-slate-900">Name</button></th>
+    <th><button type="button" data-sort-key="role" class="hover:text-slate-900">Role</button></th>
+    <th><button type="button" data-sort-key="profile" class="hover:text-slate-900">Profile</button></th>
+    <th><button type="button" data-sort-key="agreements" class="hover:text-slate-900">Agreements</button></th>
+    <th><button type="button" data-sort-key="application" class="hover:text-slate-900">Application</button></th>
+    <th><button type="button" data-sort-key="matched" class="hover:text-slate-900">Match</button></th>
+    <th><button type="button" data-sort-key="todo" class="hover:text-slate-900">To do</button></th>
+  </tr></thead>
+  <tbody data-sort-body>
   {% for d in rows %}
   {% set u = d.user %}
-  <tr class="border-t align-top">
+  <tr class="border-t align-top" data-list-row
+      data-search="{{ (u.name ~ ' ' ~ u.email ~ ' ' ~ u.role ~ ' ' ~ (d.active|map(attribute='status')|join(' ')))|lower }}"
+      data-sort-username="{{ u.name|lower }}"
+      data-sort-role="{{ u.role }}"
+      data-sort-profile="{{ d.missing|length }}"
+      data-sort-agreements="{{ d.unsigned|length }}"
+      data-sort-application="{{ d.application.status if d.application else '' }}"
+      data-sort-matched="{{ d.active|length }}"
+      data-sort-todo="{{ d.todo|length }}">
     <td class="py-2"><a class="text-indigo-600" href="{{ url_for('staff.person', user_id=u.id) }}">{{ u.name }}</a>
       <div class="text-xs text-slate-500">{{ u.email }}</div></td>
     <td class="py-2">{{ u.role }}</td>
@@ -25,7 +42,9 @@
       {% for m in d.active %}<div>{{ m.other(u).name }} {{ status_badge(m.status) }}</div>{% else %}—{% endfor %}</td>
     <td class="py-2">{{ d.todo|length or '—' }}</td>
   </tr>
-  {% else %}<tr><td class="py-2 text-slate-500">Nobody found.</td></tr>{% endfor %}
+  {% endfor %}
+  <tr data-no-results {% if rows %}hidden{% endif %}><td colspan="7" class="py-2 text-slate-500">Nobody found.</td></tr>
+  </tbody>
 </table>
 {% endcall %}
 {% endblock %}

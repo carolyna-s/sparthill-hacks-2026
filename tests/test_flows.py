@@ -5,8 +5,8 @@ from datetime import timedelta
 
 from app import matching
 from app.extensions import db
-from app.models import (Application, Attendance, Event, Match, MatchExclusion, MatchFeedback, Meeting, Message,
-                        ReminderLog, Submission, User, utcnow)
+from app.models import (Application, Attendance, AuditLog, Event, Match, MatchExclusion, MatchFeedback, Meeting,
+                        Message, ReminderLog, Submission, User, utcnow)
 from app.reminders import send_due_reminders
 
 from .conftest import login
@@ -629,9 +629,73 @@ def test_admin_pages_are_admin_only(client):
     staff = db.session.query(User).filter_by(email="staff.admin@example.org").one()
     mentee = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
     for path in ["/admin/", "/admin/users", "/admin/users?role=staff&status=inactive&q=dana", "/admin/users/new",
-                 f"/admin/users/{staff.id}", f"/admin/users/{mentee.id}", "/admin/reports", "/admin/profile",
+                 f"/admin/users/{staff.id}", f"/admin/users/{mentee.id}", "/admin/matching-logistics",
+                 "/admin/audit-logs", "/admin/profile",
                  "/staff/"]:
         assert client.get(path).status_code == 200, path
+    assert client.get("/admin/reports").status_code == 404
+
+
+def test_admin_matching_logistics_and_user_match_list(client):
+    staff = db.session.query(User).filter_by(email="staff.admin@example.org").one()
+    accepted = Match(
+        mentee_id=db.session.query(User).filter_by(email="jordan.kim@example.org").one().id,
+        mentor_id=db.session.query(User).filter_by(email="priya.raman@example.org").one().id,
+        status="approved", score=80, decided_by_id=staff.id,
+    )
+    rejected = Match(
+        mentee_id=db.session.query(User).filter_by(email="avery.patel@example.org").one().id,
+        mentor_id=db.session.query(User).filter_by(email="marcus.lee@example.org").one().id,
+        status="rejected", score=75, decided_by_id=staff.id,
+    )
+    db.session.add_all((accepted, rejected))
+    db.session.flush()
+    db.session.add(MatchFeedback(
+        match_id=rejected.id,
+        author_id=staff.id,
+        kind="deny",
+        reason="fit_concern",
+        comment="Different goals.",
+    ))
+    db.session.commit()
+
+    login(client, "backend.admin@example.org")
+    logistics = client.get("/admin/matching-logistics")
+    assert logistics.status_code == 200
+    assert b"1 / 1" in logistics.data
+    assert b"Denied applicants (1)" in logistics.data
+    assert rejected.mentee.name.encode() in logistics.data
+    assert rejected.mentor.name.encode() in logistics.data
+    assert b"Personality or fit concern" in logistics.data
+    assert b"Different goals." in logistics.data
+
+    users = client.get("/admin/users")
+    assert users.status_code == 200
+    assert b"Matched to" in users.data
+    assert accepted.mentee.name.encode() in users.data
+    assert accepted.mentor.name.encode() in users.data
+    assert b"Not matched" in users.data
+    assert b"Disable account" in users.data
+    assert b"backend.admin@example.org" not in users.data
+    live_search = client.get("/admin/users?q=jordan")
+    assert b'value="jordan"' in live_search.data
+    assert b'data-live-filter="admin-users"' in live_search.data
+    assert b'data-sort-key="role"' in live_search.data
+    assert b'data-sort-key="matched"' in live_search.data
+    assert b"Attendance rate" in live_search.data
+    assert b"Last access" in live_search.data
+    assert b"Priya Raman" in live_search.data
+
+
+def test_staff_people_search_is_live_and_table_is_sortable(client):
+    login(client, "staff.admin@example.org")
+    response = client.get("/staff/people?q=jordan")
+    assert response.status_code == 200
+    assert b'value="jordan"' in response.data
+    assert b'data-live-filter="staff-people"' in response.data
+    assert b'data-sort-key="role"' in response.data
+    assert b'data-sort-key="matched"' in response.data
+    assert b"Priya Raman" in response.data
 
 
 def test_login_records_last_login(client):
@@ -647,11 +711,69 @@ def test_admin_creates_staff_account(client):
     client.post("/admin/users/new", data={"name": "Pat Lane", "email": "Pat@Example.org", "role": "staff",
                                           "password": "temporary1"})
     assert db.session.query(User).filter_by(email="pat@example.org").one().role == "staff"
+    assert db.session.query(AuditLog).filter_by(action="staff_account_created").count() == 1
     assert client.post("/admin/users/new", data={"name": "X", "email": "x@example.org", "role": "mentor",
+                                                 "password": "temporary1"}).status_code == 400
+    assert client.post("/admin/users/new", data={"name": "X", "email": "x@example.org", "role": "backend",
                                                  "password": "temporary1"}).status_code == 400
 
     login(client, "pat@example.org", "temporary1")
     assert client.get("/staff/").status_code == 200
+
+
+def test_admin_user_detail_edits_account_and_overrides_match(client):
+    login(client, "backend.admin@example.org")
+    mentee = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(email="priya.raman@example.org").one()
+    page = client.get(f"/admin/users/{mentee.id}")
+    assert page.status_code == 200
+    assert b"Username" in page.data
+    assert b"Matched to" in page.data
+    assert b"Account Status" in page.data
+    assert b"Attendance" not in page.data
+
+    response = client.post(f"/admin/users/{mentee.id}/update", data={
+        "role": "mentee", "matched_to": str(mentor.id), "status": "active",
+    })
+    assert response.status_code == 302
+    match = db.session.query(Match).filter_by(mentee_id=mentee.id, mentor_id=mentor.id, status="approved").one()
+    log = db.session.query(AuditLog).filter_by(action="account_updated", target_user_id=mentee.id).one()
+    assert "manual match assignment override changed" in log.description
+    assert mentor.name not in log.description
+
+    client.post(f"/admin/users/{mentee.id}/update", data={
+        "role": "mentee", "matched_to": "", "status": "inactive",
+    })
+    assert not mentee.is_active
+    assert match.status == "ended"
+    assert db.session.query(AuditLog).filter_by(target_user_id=mentee.id).count() >= 2
+
+
+def test_admin_requires_password_change_without_bypassing_login_password(client):
+    login(client, "backend.admin@example.org")
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    client.post(f"/admin/users/{user.id}/reset-password")
+    assert user.must_reset_password
+    assert db.session.query(AuditLog).filter_by(action="password_reset_required").count() == 1
+    client.post("/logout")
+
+    wrong = login(client, user.email, "not-the-password")
+    assert b"Wrong email or password." in wrong.data
+    correct = login(client, user.email)
+    assert correct.headers["Location"].endswith("/password-required")
+    assert client.get("/dashboard").headers["Location"].endswith("/password-required")
+
+    invalid = client.post("/password-required", data={
+        "new_password": "short", "confirm_password": "short",
+    })
+    assert b"at least 8 characters" in invalid.data
+    valid = client.post("/password-required", data={
+        "new_password": "brandnew123", "confirm_password": "brandnew123",
+    })
+    assert valid.status_code == 302
+    assert not user.must_reset_password
+    assert user.check_password("brandnew123")
+    assert client.get("/dashboard").status_code == 200
 
 
 def test_deactivated_account_is_signed_out_and_unmatched(client):
@@ -659,15 +781,19 @@ def test_deactivated_account_is_signed_out_and_unmatched(client):
     login(client, mentor.email)
     assert client.get("/dashboard").status_code == 200
 
-    admin = client.application.test_client()
-    login(admin, "backend.admin@example.org")
-    admin.post(f"/admin/users/{mentor.id}/active", data={"active": "0"})
+    mentor.is_active = False
+    db.session.commit()
     assert mentor.is_active is False
-    assert client.get("/dashboard").status_code == 302  # existing session is gone
-    assert b"This account has been deactivated" in login(client, mentor.email).data
+    response = client.get("/dashboard")
+    assert response.status_code == 302
+    login_page = client.get(response.headers["Location"])
+    assert b"This account has been disabled. You have been logged out." in login_page.data
+    assert b"This account has been disabled. Contact the program administrator." in login(
+        client, mentor.email).data
     assert mentor.id not in matching.open_slots()
 
-    admin.post(f"/admin/users/{mentor.id}/active", data={"active": "1"})
+    mentor.is_active = True
+    db.session.commit()
     login(client, mentor.email)
     assert client.get("/dashboard").status_code == 200
 

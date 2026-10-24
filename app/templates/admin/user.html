@@ -1,77 +1,65 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, status_badge %}
-{% from "admin/_macros.html" import when, account_status, toggle_active, stat with context %}
+{% from "_macros.html" import card, csrf, field, input_cls, btn %}
 {% block content %}
-<a href="{{ url_for('admin.users') }}" class="text-sm text-brand-600">← User audit</a>
-<div class="flex flex-wrap justify-between items-start gap-3 mt-2 mb-5">
-  <div>
-    <h1 class="text-2xl font-semibold">{{ u.name }} {{ account_status(u) }}</h1>
-    <p class="text-sm text-slate-500">{{ u.email }} · {{ role_labels[u.role] }}</p>
-  </div>
-  <div class="flex gap-2 items-center">
-    {% if d %}<a href="{{ url_for('staff.person', user_id=u.id) }}" class="text-sm text-brand-600 mr-2">Open staff view →</a>{% endif %}
-    {{ toggle_active(u) }}
-  </div>
-</div>
+<div class="max-w-2xl mx-auto">
+  <a href="{{ url_for('admin.users') }}" class="text-sm text-brand-600">← Users</a>
+  <h1 class="text-2xl font-semibold mt-2 mb-5">User account</h1>
 
-{% call card("Account") %}
-<dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-  <div><dt class="text-slate-500">Joined</dt><dd>{{ u.created_at.strftime('%b %d, %Y') }}</dd></div>
-  <div><dt class="text-slate-500">Last login</dt><dd>{{ when(u.last_login_at) }}</dd></div>
-  <div><dt class="text-slate-500">Last seen</dt><dd>{{ when(u.last_seen_at) }}</dd></div>
-  <div><dt class="text-slate-500">Status</dt><dd>{{ 'Can log in' if u.is_active else 'Deactivated: cannot log in' }}</dd></div>
-</dl>
-{% if d and d.active and not u.is_active %}
-  <p class="text-sm text-amber-700 mt-4">This account is deactivated but still has {{ d.active|length }} open match(es).
-    Deactivating doesn't end a match; end it from the <a class="underline" href="{{ url_for('staff.matching_page') }}">matching page</a> if needed.</p>
-{% endif %}
-{% endcall %}
-
-{% if d %}
-  <dl class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-5 text-sm">
-    {{ stat("Modules attended", activity.attended) }}
-    {{ stat("Pre/postwork submitted", activity.submissions) }}
-    {{ stat("Messages sent", activity.messages) }}
-    {{ stat("Meetings", activity.meetings) }}
-    {{ stat("Ratings given", activity.ratings) }}
-  </dl>
-  <div class="grid md:grid-cols-2 gap-5">
-    {% call card("Onboarding") %}
-      <ul class="text-sm space-y-2">
-        <li>Profile: {% if d.missing %}<span class="text-amber-700">missing {{ d.missing|join(', ') }}</span>{% else %}complete ✓{% endif %}</li>
-        <li>Agreements: {% if d.unsigned %}<span class="text-amber-700">{{ d.unsigned|map(attribute='title')|join(', ') }} unsigned</span>{% else %}all signed ✓{% endif %}</li>
-        <li>Application: {% if d.application %}{{ status_badge(d.application.status) }}
-          {% if d.application.submitted_at %}<span class="text-slate-500">submitted {{ d.application.submitted_at.strftime('%b %d') }}</span>{% endif %}
-          {% if d.application.reviewed_at %}<span class="text-slate-500">· reviewed {{ d.application.reviewed_at.strftime('%b %d') }}</span>{% endif %}
-          {% else %}not started{% endif %}</li>
-        {% if u.role == 'mentee' %}<li>Outstanding module work: {{ d.todo|length or 'none' }}</li>{% endif %}
-      </ul>
+  {% call card("Account details") %}
+  <form method="post" action="{{ url_for('admin.update_user', user_id=u.id) }}">
+    {{ csrf() }}
+    {% call field("Username") %}
+      <input value="{{ u.name }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
     {% endcall %}
-    {% call card("Matches") %}
-      {% for m in d.matches %}
-        <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="flex justify-between text-sm py-1 hover:text-brand-700">
-          <span>{{ m.other(u).name }}</span>{{ status_badge(m.status) }}</a>
-      {% else %}<p class="text-sm text-slate-500">No matches yet.</p>{% endfor %}
+    {% call field("Role") %}
+      {% if u.role in ("mentee", "mentor") %}
+      <select name="role" class="{{ input_cls() }}">
+        <option value="mentee" {{ 'selected' if u.role == 'mentee' }}>Mentee</option>
+        <option value="mentor" {{ 'selected' if u.role == 'mentor' }}>Mentor</option>
+      </select>
+      {% else %}
+      <input value="Staff" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endif %}
     {% endcall %}
-  </div>
-{% else %}
-  <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 text-sm">
-    {{ stat("Applications reviewed", activity.reviews) }}
-    {{ stat("Matches approved", activity.decisions.get('approved', 0)) }}
-    {{ stat("Matches rejected", activity.decisions.get('rejected', 0)) }}
-    {{ stat("Matches ended", activity.decisions.get('ended', 0)) }}
-  </dl>
-  {% call card("Recent application reviews") %}
-  <table class="w-full text-sm">
-    {% for a in activity.recent_reviews %}
-    <tr class="border-t first:border-t-0">
-      <td class="py-2"><a class="text-brand-600" href="{{ url_for('admin.user', user_id=a.user_id) }}">{{ a.user.name }}</a>
-        <span class="text-xs text-slate-500">· {{ role_labels[a.user.role] }}</span></td>
-      <td>{{ status_badge(a.status) }}</td>
-      <td class="text-right text-slate-500">{{ when(a.reviewed_at) }}</td>
-    </tr>
-    {% else %}<tr><td class="text-slate-500">No reviews yet.</td></tr>{% endfor %}
-  </table>
+    {% call field("Matched to") %}
+      {% if u.role in ("mentee", "mentor") %}
+      <select name="matched_to" class="{{ input_cls() }}">
+        <option value="">— Unmatch —</option>
+        {% for candidate in candidates %}
+        <option value="{{ candidate.id }}" {{ 'selected' if matched_to and matched_to.id == candidate.id }}>
+          {{ candidate.name }}{% if not candidate.is_active %} (disabled){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input value="—" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endif %}
+    {% endcall %}
+    {% call field("Account Status") %}
+      <select name="status" class="{{ input_cls() }}">
+        <option value="active" {{ 'selected' if u.is_active }}>Active</option>
+        <option value="inactive" {{ 'selected' if not u.is_active }}>Disabled</option>
+      </select>
+    {% endcall %}
+    <div class="flex justify-end">{{ btn("Save Changes") }}</div>
+  </form>
   {% endcall %}
-{% endif %}
+
+  {% call card("Password reset") %}
+  {% if u.must_reset_password %}
+  <p class="text-sm text-amber-800 mb-3">A password change is already required at the next successful login.</p>
+  {% else %}
+  <p class="text-sm text-slate-600 mb-3">
+    Require the user to enter their current password at login, then choose a new password.
+  </p>
+  <form method="post" action="{{ url_for('admin.require_password_reset', user_id=u.id) }}"
+        onsubmit="return confirm('Require this user to choose a new password at their next login?')">
+    {{ csrf() }}
+    <button class="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700">
+      Require password reset
+    </button>
+  </form>
+  {% endif %}
+  {% endcall %}
+</div>
 {% endblock %}

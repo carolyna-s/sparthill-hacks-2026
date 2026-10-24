@@ -10,11 +10,11 @@
 {% macro toggle_active(u, next=None) %}
 {% if u.id != current_user.id %}
 <form method="post" action="{{ url_for('admin.set_active', user_id=u.id) }}" class="inline"
-      onsubmit='return confirm({{ (("Deactivate " ~ u.name ~ "? They will be signed out and can no longer log in.") if u.is_active else ("Reactivate " ~ u.name ~ "?"))|tojson }})'>
+      onsubmit='return confirm({{ (("Disable " ~ u.name ~ "? They will be signed out and can no longer log in.") if u.is_active else ("Enable " ~ u.name ~ "?"))|tojson }})'>
   {{ csrf() }}
   <input type="hidden" name="active" value="{{ '0' if u.is_active else '1' }}">
   {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-  <button class="text-xs font-medium rounded px-2 py-1 {{ 'border border-red-300 text-red-700 hover:bg-red-50' if u.is_active else 'border border-emerald-300 text-emerald-700 hover:bg-emerald-50' }}">{{ 'Deactivate' if u.is_active else 'Activate' }}</button>
+  <button class="text-xs font-medium rounded px-3 py-1.5 transition-colors {{ 'border border-red-500 text-red-700 hover:bg-red-600 hover:text-white focus:bg-red-600 focus:text-white' if u.is_active else 'border border-emerald-500 text-emerald-700 hover:bg-emerald-600 hover:text-white focus:bg-emerald-600 focus:text-white' }}">{{ 'Disable account' if u.is_active else 'Enable account' }}</button>
 </form>
 {% endif %}
 {% endmacro %}

@@ -61,11 +61,14 @@ def login():
     if request.method == "POST":
         user = db.session.query(User).filter_by(email=request.form["email"].strip().lower()).first()
         if user and user.check_password(request.form["password"]) and not user.is_active:
-            flash("This account has been deactivated. Contact the program staff.", "error")
-        elif user and user.check_password(request.form["password"]):
+            flash("This account has been disabled. Contact the program administrator.", "error")
+            return render_template("auth/login.html")
+        if user and user.check_password(request.form["password"]):
             login_user(user, remember=True)
             user.last_login_at = utcnow()
             db.session.commit()
+            if user.must_reset_password:
+                return redirect(url_for("auth.required_password"))
             if user.role in ("mentee", "mentor"):
                 from .intake import profile_setup_complete
 
@@ -75,6 +78,26 @@ def login():
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("main.dashboard"))
         flash("Wrong email or password.", "error")
     return render_template("auth/login.html")
+
+
+@bp.route("/password-required", methods=["GET", "POST"])
+@login_required
+def required_password():
+    if not current_user.must_reset_password:
+        return redirect(url_for("main.dashboard"))
+    if request.method == "POST":
+        new_password = request.form.get("new_password", "")
+        if len(new_password) < 8:
+            flash("New password must be at least 8 characters.", "error")
+        elif new_password != request.form.get("confirm_password"):
+            flash("New password and confirmation do not match.", "error")
+        else:
+            current_user.set_password(new_password)
+            current_user.must_reset_password = False
+            db.session.commit()
+            flash("Your password has been updated.", "ok")
+            return redirect(url_for("main.dashboard"))
+    return render_template("auth/password_required.html")
 
 
 def change_password(user: User, form) -> str | None:
