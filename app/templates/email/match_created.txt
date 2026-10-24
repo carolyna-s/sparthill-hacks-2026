@@ -1,0 +1,9 @@
+You've been matched with {{ other.name }}!
+Hi {{ user.name }},
+
+Your mentorship match is confirmed. {{ other.name }} is your {{ "mentor" if other.id == match.mentor_id else "mentee" }}.
+
+Say hello and plan your first meeting:
+{{ base_url }}/messages/{{ match.id }}
+
+Spartan Mentorship Program

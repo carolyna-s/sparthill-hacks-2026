@@ -1,5 +1,6 @@
 from app import matching
 from app.matching import GROUP_CREDIT, INDUSTRY_RANGE, SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
+from app.taxonomy import OPEN_TO_ANY, UNDECIDED
 
 MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
           "development_areas": ["writing", "technical skills"]}
@@ -78,6 +79,32 @@ def test_preference_dimensions_need_any_one_match():
     mentee = {"education_paths": ["community college transfer", "first-generation college student"]}
     assert score_pair(mentee, {"education_paths": ["first-generation college student"]}, weights)[0] == 100.0
     assert score_pair(mentee, {"education_paths": ["graduate degree"]}, weights)[0] == 0.0
+
+
+def test_mentee_any_and_undecided_preferences_are_neutral():
+    score, skills = score_pair(
+        {"development_areas": [OPEN_TO_ANY]},
+        {"development_areas": ["leadership"]},
+        {"development_areas": 1.0},
+    )
+    assert score == 100.0
+    assert skills["development_areas"]["shared"] == ["leadership"]
+
+    score, goals = score_pair(
+        {"goals": [UNDECIDED]},
+        {"goals": ["lead a team"]},
+        {"goals": 1.0},
+    )
+    assert score == 100.0
+    assert goals["goals"]["shared"] == []
+
+    score, education = score_pair(
+        {"education_paths": [UNDECIDED]},
+        {"education_paths": ["graduate degree"]},
+        {"education_paths": 1.0},
+    )
+    assert score == 100.0
+    assert education["education_paths"]["shared"] == []
 
 
 def test_alumni_only_counts_when_requested():

@@ -29,9 +29,13 @@ class Config:
     SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "uploads")
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "data", "uploads"))  # tests only
 
-    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "console")  # every email is also in EmailLog
+    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "console")  # console | smtp | ses; all logged to EmailLog
+    MAIL_FROM = os.getenv("MAIL_FROM", "mentorship@example.org")  # for Gmail, the account's address
+    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))  # STARTTLS
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # Gmail: an app password, not the account password
     AWS_REGION = os.getenv("AWS_REGION", "us-west-2")  # for SES
-    MAIL_FROM = os.getenv("MAIL_FROM", "mentorship@example.org")
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
     CRON_SECRET = os.getenv("CRON_SECRET", "")
@@ -46,3 +50,6 @@ class Config:
     # Reminder windows
     DUE_SOON_HOURS = 48
     UNREAD_MESSAGE_HOURS = 24
+
+    # New-message emails (app/notify.py): sent on each message, at most one per thread per cooldown
+    MESSAGE_EMAIL_COOLDOWN_MINUTES = 60

@@ -15,6 +15,7 @@ from .conftest import login
 
 def test_healthz(client):
     assert client.get("/healthz").json == {"ok": True}
+    assert client.get("/health").json == {"ok": True}
 
 
 def test_account_profile_requires_password_and_keeps_identity_read_only(client):
@@ -134,7 +135,7 @@ def test_dashboard_application_edits_answers_without_changing_status(client):
     }
     assert user.profile.organization == "Updated Org"
     assert user.profile.availability == ["Monday - night"]
-    assert user.profile.languages == ["Spanish"]
+    assert user.profile.languages == ["English", "Spanish"]  # English is always included
     assert user.profile.industry == "Software Development"
     assert user.profile.interests == "Updated interests"
     assert user.profile.prefers_alumni
@@ -151,6 +152,9 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
+    assert b'href="/dashboard"' not in blocked.data
+    assert b'href="/modules"' not in blocked.data
+    assert b'href="/messages/"' not in blocked.data
     assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
     blocked = client.get("/profile/3", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")  # locked until step 2 is done
@@ -168,10 +172,22 @@ def test_mentee_intake_flow(client):
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Modules" in blocked.data
 
-    resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
-                                           "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
+    preferences = {
+        "industry": "  software   DEVELOPMENT ",
+        "development_areas": ["Open to Any"],
+        "goals": ["Undecided"],
+        "education_paths": ["Undecided"],
+        "goals_other": "write a book",
+        "prefers_alumni": "1",
+    }
+    page = client.get("/profile/3")
+    assert b"Open to Any" in page.data
+    assert b"Undecided" in page.data
+    resp = client.post("/profile/3", data=preferences)
     assert resp.headers["Location"].endswith("/profile/4")
-    assert user.profile.goals == ["switch careers"]
+    assert user.profile.development_areas == ["Open to Any"]
+    assert user.profile.goals == ["Undecided"]
+    assert user.profile.education_paths == ["Undecided"]
     assert user.profile.goals_other == "write a book"
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
@@ -212,7 +228,7 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
-    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/4")
+    assert client.post("/profile/3", data=preferences).headers["Location"].endswith("/profile/4")
 
     profile_page = client.get("/profile/4")
     assert b"What subjects are you interested in learning more about?" in profile_page.data
@@ -252,7 +268,7 @@ def test_profile_back_saves_without_requiring(client):
     resp = client.post("/profile/2", data={"nav": "back", "languages": ["Korean"]})
     assert resp.headers["Location"].endswith("/profile/1")
     user = db.session.query(User).filter_by(email="bp@x.org").one()
-    assert user.profile.languages == ["Korean"]
+    assert user.profile.languages == ["English", "Korean"]
 
 
 def test_register_requires_school(client):
@@ -271,11 +287,22 @@ def test_required_fields_block_next(client):
     user = db.session.query(User).filter_by(email="nm@x.org").one()
     assert user.profile.school == "CC"
 
+    resp = client.post("/profile/2", data={"languages": ["Spanish"]})
+    assert resp.headers["Location"].endswith("/profile/2")  # availability is required too
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
-    assert resp.headers["Location"].endswith("/profile/2")  # language is required too
-    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"]})
-    assert resp.headers["Location"].endswith("/profile/3")
-    client.post("/profile/3", data={})
+    assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
+    assert user.profile.languages == ["English"]
+    page = client.get("/profile/3")
+    assert b"entrepreneurship" in page.data
+    assert b"Open to Any" not in page.data
+    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/3")
+    resp = client.post("/profile/3", data={
+        "industry": "Education Administration",
+        "development_areas": ["leadership"],
+        "goals": ["entrepreneurship"],
+        "education_paths": ["4-year university"],
+    })
+    assert resp.headers["Location"].endswith("/profile/4")
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
     assert b"What type of mentor do you see yourself being?" in profile_page.data
@@ -295,6 +322,33 @@ def test_staff_pages_are_staff_only(client):
     assert b"Staff Overview" in overview
 
 
+def test_messages_locked_until_match_is_approved(client):
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(role="mentor").first()
+    login(client, jordan.email)
+    page = client.get("/messages/")
+    assert page.status_code == 200 and b"Messages aren't available yet" in page.data
+    assert b"You don't have a mentor yet" in page.data
+    assert b"locked until your mentorship is approved" in client.get("/dashboard", follow_redirects=True).data
+
+    m = Match(mentee_id=jordan.id, mentor_id=mentor.id, score=80, score_breakdown={})
+    db.session.add(m)
+    db.session.commit()
+    assert b"Staff are reviewing a mentor for you" in client.get("/messages/").data
+    assert mentor.name.encode() not in client.get(f"/messages/{m.id}").data  # proposal isn't revealed
+
+    m.status = "released"
+    db.session.commit()
+    page = client.get(f"/messages/{m.id}").data
+    assert b"awaiting" in page and b"Confirm your match" in page
+
+    m.status = "approved"
+    db.session.commit()
+    resp = client.get("/messages/")
+    assert resp.headers["Location"].endswith(f"/messages/{m.id}")
+    assert b"locked until your mentorship is approved" not in client.get(f"/messages/{m.id}").data
+
+
 def test_review_match_and_message(client):
     login(client, "staff.admin@example.org")
     assert db.session.query(Application).filter_by(status="submitted").count() == 0
@@ -309,6 +363,8 @@ def test_review_match_and_message(client):
     assert match.status == "released"
 
     login(client, match.mentee.email)
+    inbox = client.get("/messages/")
+    assert inbox.status_code == 200 and b"awaiting confirmation" in inbox.data
     dashboard = client.get("/dashboard")
     assert b"Action required:" in dashboard.data
     assert b"Confirm or decline this match" in dashboard.data
@@ -317,14 +373,15 @@ def test_review_match_and_message(client):
     assert b"Confirm match" in notification.data and b"Decline match" in notification.data
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
     assert match.status == "approved" and match.mentee_confirmed_at is not None
+    assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
-    assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
+    assert f"Messages with {match.mentor.name}".encode() in page.data
     assert b"Sent" in page.data and b"Seen" not in page.data
     login(client, match.mentor.email)
     page = client.get(f"/messages/{match.id}")
     assert b"Hi!" in page.data
-    assert f"Messages with your mentee, {match.mentee.name}".encode() in page.data
+    assert f"Messages with {match.mentee.name}".encode() in page.data
     assert b"Active now" in page.data  # the mentee was just here
     assert db.session.query(Message).one().read_at is not None
     login(client, match.mentee.email)
@@ -332,6 +389,43 @@ def test_review_match_and_message(client):
 
     outsider = next(m for m in proposed if not m.includes(match.mentor))
     assert client.get(f"/messages/{outsider.id}").status_code == 404
+
+
+def test_unread_message_badge_and_live_thread_updates(client):
+    from app import matching
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    message = Message(match_id=match.id, sender_id=match.mentor_id, body="Unread first message")
+    db.session.add(message)
+    db.session.commit()
+
+    login(client, match.mentee.email)
+    dashboard = client.get("/dashboard")
+    assert b"1 unread message" in dashboard.data
+    assert client.get("/messages/unread-count").json == {"unread_count": 1}
+    thread_page = client.get(f"/messages/{match.id}")
+    assert b"Unread first message" in thread_page.data
+    assert message.read_at is not None
+
+    db.session.add(Message(match_id=match.id, sender_id=match.mentor_id, body="Arrived while open"))
+    db.session.commit()
+    update = client.get(f"/messages/{match.id}/updates")
+    assert update.status_code == 200
+    assert "Arrived while open" in update.json["messages_html"]
+    assert update.json["unread_count"] == 0
+    assert b"data-live-messages" in thread_page.data
+    assert b"data-message-updates-url" in thread_page.data
+
+    # Messages the viewer hadn't read are flagged new (shaded blue), once.
+    assert f'data-message-id="{message.id}" data-new'.encode() in thread_page.data
+    assert b"New messages" in thread_page.data
+    arrived = db.session.query(Message).filter_by(body="Arrived while open").one()
+    assert f'data-message-id="{arrived.id}" data-new' in update.json["messages_html"]
+    again = client.get(f"/messages/{match.id}/updates").json["messages_html"]
+    assert " data-new>" not in again and "New messages" not in again
+    assert client.get(f"/messages/{match.id}").data.index(b"Unread first message") < \
+        client.get(f"/messages/{match.id}").data.index(b"Arrived while open")  # oldest first
 
 
 def test_mentor_schedules_meeting_on_both_calendars(client):
@@ -606,21 +700,19 @@ def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
     assert b"Mentee Withdrawn" in client.get("/staff/matching").data
 
 
-def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+def test_mentee_cannot_release_confirmed_mentor(client):
     login(client, "staff.admin@example.org")
     match = matching.propose_all()[0]
     client.post(f"/staff/matches/{match.id}/approve")
     login(client, match.mentee.email)
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    dashboard = client.get("/dashboard")
+    assert b"Release mentor" not in dashboard.data
     response = client.post(f"/matches/{match.id}/release")
 
-    assert response.status_code == 302
-    assert match.status == "withdrawn"
-    assert match.mentee_id in matching.unmatched_mentee_ids()
-    assert all(candidate.mentor_id != match.mentor_id
-               for candidate in matching.ranking_for(match.mentee_id, limit=None))
-    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
-    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+    assert response.status_code == 404
+    assert match.status == "approved"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
 
 
 def test_undo_auto_propose_and_cancel(client):

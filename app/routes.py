@@ -8,11 +8,11 @@ from urllib.parse import urlsplit
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import embeddings, program
+from . import embeddings, notify, program
 from .extensions import csrf, db
 from .intake import Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields, signup_next_step
 from .models import Event, Match, MatchExclusion, MatchFeedback, Meeting, Submission, User, utcnow
-from .taxonomy import DAYS, PERIODS, TAXONOMY
+from .taxonomy import DAYS, PERIODS, TAXONOMY, taxonomy_for_role, with_base_language
 
 bp = Blueprint("main", __name__)
 
@@ -109,6 +109,8 @@ def respond_to_match(match_id: int):
             db.session.add(MatchFeedback(match_id=match.id, author_id=current_user.id,
                                          kind="confirm", reason="accepted"))
             db.session.commit()
+            if match.status == "approved":
+                notify.notify_match_created(match)
             flash("You confirmed the match.", "ok")
             return redirect(url_for("main.dashboard"))
         if response == "decline":
@@ -127,6 +129,8 @@ def respond_to_match(match_id: int):
         if not _needs_mentor_confirmation(match) or match.mentor_confirmed_at is not None:
             match.status = "approved"
         db.session.commit()
+        if match.status == "approved":
+            notify.notify_match_created(match)
         flash(
             f"You confirmed your match with {match.mentor.name}."
             if match.status == "approved" else
@@ -177,7 +181,7 @@ def _reject_released_match(match: Match, user: User, reason: str, comment: str) 
 def release_mentor(match_id: int):
     match = db.get_or_404(Match, match_id)
     if (current_user.role != "mentee" or match.mentee_id != current_user.id
-            or match.status != "approved"):
+            or match.status != "approved" or match.mentee_confirmed_at is not None):
         abort(404)
 
     now = utcnow()
@@ -214,25 +218,26 @@ def update_application():
         return render_template("application.html", application=application,
                                Personality_Questions_Data=Personality_Questions_Data,
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
-                               taxonomy=TAXONOMY, DAYS=DAYS, PERIODS=PERIODS)
+                               taxonomy=taxonomy_for_role(current_user.role), DAYS=DAYS, PERIODS=PERIODS)
 
     profile = current_user.profile
+    taxonomy = taxonomy_for_role(current_user.role)
     profile.organization = request.form.get("organization", "").strip()[:200]
     profile.headline = request.form.get("headline", "").strip()[:200]
     profile.bio = request.form.get("bio", "").strip()
     profile.linkedin_url = request.form.get("linkedin_url", "").strip()[:300] or None
     profile.availability = [value for value in request.form.getlist("availability")
                             if value in TAXONOMY["availability"]]
-    profile.languages = [value for value in request.form.getlist("languages")
-                         if value in TAXONOMY["languages"]]
+    profile.languages = with_base_language(value for value in request.form.getlist("languages")
+                                           if value in TAXONOMY["languages"])
     profile.industry = request.form.get("industry", "").strip()[:120] or None
     profile.development_areas = [value for value in request.form.getlist("development_areas")
-                                 if value in TAXONOMY["development_areas"]]
+                                 if value in taxonomy["development_areas"]]
     profile.goals = [value for value in request.form.getlist("goals")
-                     if value in TAXONOMY["goals"]]
+                     if value in taxonomy["goals"]]
     profile.goals_other = request.form.get("goals_other", "").strip()
     profile.education_paths = [value for value in request.form.getlist("education_paths")
-                               if value in TAXONOMY["education_paths"]]
+                               if value in taxonomy["education_paths"]]
     profile.prefers_alumni = current_user.role == "mentee" and bool(request.form.get("prefers_alumni"))
     profile.interests = request.form.get("interests", "").strip()
     profile.looking_for = request.form.get("looking_for", "").strip()
@@ -242,8 +247,8 @@ def update_application():
     application.answers = {**(application.answers or {}), **answers}
 
     errors = []
-    if missing_fields(current_user):
-        errors.append("Complete the required school, availability, and language fields.")
+    if missing_fields(current_user, 1) or missing_fields(current_user, 2):
+        errors.append("Complete the required school and availability fields.")
     required_text = [
         label for key, label in Industry_Relevant_Prompt_Data[current_user.role].items()
         if not (getattr(profile, key) or "").strip()
@@ -266,7 +271,7 @@ def update_application():
         return render_template("application.html", application=application,
                                Personality_Questions_Data=Personality_Questions_Data,
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
-                               taxonomy=TAXONOMY, DAYS=DAYS, PERIODS=PERIODS, editing=True)
+                               taxonomy=taxonomy, DAYS=DAYS, PERIODS=PERIODS, editing=True)
 
     embeddings.refresh(profile)  # text answers and industry may have changed
     db.session.commit()
@@ -301,6 +306,8 @@ def _month_calendar(meetings: list[Meeting]) -> dict:
     return {"title": today.strftime("%B %Y"), "today": today.day, "weeks": weeks, "days": by_day}
 
 
+# Cloud Run's front end swallows /healthz, so /health is the one to hit there.
+@bp.get("/health")
 @bp.get("/healthz")
 def healthz():
     db.session.execute(db.text("SELECT 1"))

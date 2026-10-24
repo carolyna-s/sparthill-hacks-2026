@@ -1,0 +1,38 @@
+{# Chat bubbles, oldest first. new_ids: the other side's messages the viewer hadn't read yet; they get
+   the "new" highlight (messages.html keeps it on for a few seconds across live refreshes). #}
+{% set new_ids = new_ids or [] %}
+{% set mine_ids = thread | selectattr('sender_id', 'equalto', current_user.id) | map(attribute='id') | list %}
+{% set ns = namespace(day=None, divider=False) %}
+{% for msg in thread %}
+  {% set mine = msg.sender_id == current_user.id %}
+  {% set day = msg.sent_at.strftime('%A, %b %d') %}
+  {% if day != ns.day %}
+    {% set ns.day = day %}
+    <li class="flex items-center gap-3 py-2 text-[11px] font-medium uppercase tracking-wide text-slate-400" aria-hidden="true">
+      <span class="h-px flex-1 bg-slate-200"></span>{{ day }}<span class="h-px flex-1 bg-slate-200"></span>
+    </li>
+  {% endif %}
+  {% if msg.id in new_ids and not ns.divider %}
+    {% set ns.divider = True %}
+    <li class="flex items-center gap-3 py-1 text-xs font-semibold text-brand-600" data-new-divider>
+      <span class="h-px flex-1 bg-brand-300"></span>New messages<span class="h-px flex-1 bg-brand-300"></span>
+    </li>
+  {% endif %}
+  <li class="flex {{ 'justify-end' if mine }} py-1" data-message-id="{{ msg.id }}" {% if msg.id in new_ids %}data-new{% endif %}>
+    <div class="max-w-[80%] sm:max-w-[70%]">
+      {% if not mine %}<p class="mb-1 ml-1 text-xs font-medium text-slate-600">{{ msg.sender.name }}</p>{% endif %}
+      <div data-bubble
+           class="rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line break-words
+                  {{ 'bg-brand-600 text-white rounded-br-md' if mine else 'bg-slate-100 text-slate-900 rounded-bl-md' }}">{{ msg.body }}</div>
+      <p class="mt-1 flex items-center gap-2 text-[11px] text-slate-400 {{ 'justify-end mr-1' if mine else 'ml-1' }}">
+        <span data-new-pill class="hidden rounded-full bg-brand-600 px-1.5 py-px text-[10px] font-semibold uppercase text-white">New</span>
+        <span title="{{ msg.sent_at.strftime('%b %d, %Y %H:%M') }} UTC">{{ msg.sent_at.strftime('%I:%M %p').lstrip('0') }}</span>
+        {% if mine and msg.id == mine_ids[-1] %}
+          <span>· {% if msg.read_at %}Seen {{ msg.read_at | ago }}{% else %}Sent{% endif %}</span>
+        {% endif %}
+      </p>
+    </div>
+  </li>
+{% else %}
+  <li class="py-16 text-center text-sm text-slate-500">No messages yet. Say hello!</li>
+{% endfor %}

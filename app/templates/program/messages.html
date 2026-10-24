@@ -1,72 +1,180 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, input_cls %}
+{% block head %}
+<style>
+  /* New messages from the other person: shaded blue, fading back to normal (see the script below). */
+  [data-message-id] [data-bubble] { transition: background-color 1.2s ease, box-shadow 1.2s ease; }
+  [data-message-id].is-new [data-bubble] { background-color: #d9e8f7; box-shadow: 0 0 0 2px #7fb2e3; }
+  [data-message-id].is-new [data-new-pill] { display: inline-block; }
+</style>
+{% endblock %}
 {% block content %}
-{% if m.includes(current_user) %}
-  {% set other = m.other(current_user) %}
-  <h1 class="text-2xl font-semibold">Messages with your {{ 'mentor' if current_user.id == m.mentee_id else 'mentee' }}, {{ other.name }}</h1>
-  <p class="text-sm text-slate-500 mb-5">
-    {% if not other.last_seen_at %}Not active yet
-    {% elif (now - other.last_seen_at).total_seconds() < 300 %}<span class="text-emerald-600">● Active now</span>
-    {% else %}Last seen {{ other.last_seen_at | ago }}{% endif %}
-  </p>
-{% else %}
-  <h1 class="text-2xl font-semibold mb-5">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</h1>
-{% endif %}
-<div class="max-w-3xl">
-{% call card("Meetings") %}
-<ul class="divide-y divide-slate-100 mb-1">
-  {% for mt in meetings %}
-    <li class="flex items-center gap-3 py-2 text-sm">
-      <span class="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
-      <span class="flex-1"><span class="font-medium">{{ mt.starts_at.strftime('%a, %b %d at %I:%M %p') }}</span>
-        {% if mt.note %}<span class="text-slate-500"> · {{ mt.note }}</span>{% endif %}</span>
-      {% if current_user.id == m.mentor_id %}
-        <form method="post" action="{{ url_for('program.cancel_meeting', meeting_id=mt.id) }}"
-              onsubmit="return confirm('Cancel this meeting?')">
-          {{ csrf() }}<button class="text-xs text-slate-500 hover:text-red-600">Cancel</button>
-        </form>
-      {% endif %}
-    </li>
+{% set participant = m.includes(current_user) %}
+{% set other = m.other(current_user) if participant else None %}
+<div class="mb-5 flex items-center gap-3">
+  {% if participant %}
+    <span class="h-11 w-11 shrink-0 rounded-full bg-brand-100 text-brand-700 font-semibold grid place-items-center">{{ other.name[:1]|upper }}</span>
+    <div>
+      <h1 class="text-xl font-semibold leading-tight">Messages with {{ other.name }}</h1>
+      <p class="text-sm text-slate-500">
+        {% if not other.last_seen_at %}Not active yet
+        {% elif (now - other.last_seen_at).total_seconds() < 300 %}<span class="text-emerald-600">● Active now</span>
+        {% else %}Last seen {{ other.last_seen_at | ago }}{% endif %}
+      </p>
+    </div>
   {% else %}
-    <li class="py-2 text-sm text-slate-500">
-      {% if current_user.id == m.mentor_id %}No meeting scheduled. Agree on a time below, then add it here.
-      {% elif current_user.id == m.mentee_id %}No meeting scheduled yet. Your mentor will set one; it'll show on your dashboard calendar.
-      {% else %}No meeting scheduled.{% endif %}
-    </li>
-  {% endfor %}
-</ul>
-{% if current_user.id == m.mentor_id %}
-<form method="post" action="{{ url_for('program.schedule_meeting', match_id=m.id) }}" class="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-100">
-  {{ csrf() }}
-  <input type="datetime-local" name="starts_at" required class="{{ input_cls() }} sm:w-auto">
-  <input name="note" maxlength="200" placeholder="Where / agenda (optional)" class="{{ input_cls() }} sm:flex-1 sm:w-auto">
-  {{ btn("Schedule") }}
-</form>
-{% endif %}
-{% endcall %}
-{% call card() %}
-{% if m.includes(current_user) %}
-<form method="post" class="flex gap-2 mb-5">
-  {{ csrf() }}
-  <textarea name="body" rows="2" required class="{{ input_cls() }}" placeholder="Write a message"></textarea>
-  {{ btn("Send") }}
-</form>
-{% endif %}
-<ul class="divide-y divide-slate-100">
-  {% for msg in thread %}
-    {% set mine = msg.sender_id == current_user.id %}
-    <li class="py-3">
-      <div class="flex items-baseline justify-between gap-3 text-xs text-slate-500">
-        <span class="font-medium {{ 'text-brand-600' if mine else 'text-slate-700' }}">{{ 'You' if mine else msg.sender.name }}</span>
-        <span title="{{ msg.sent_at.strftime('%b %d, %Y %H:%M') }} UTC">{{ msg.sent_at | ago }}</span>
-      </div>
-      <div class="text-sm whitespace-pre-line mt-1">{{ msg.body }}</div>
-      {% if mine %}
-        <div class="text-[11px] text-slate-400 mt-1">{% if msg.read_at %}Seen {{ msg.read_at | ago }}{% else %}Sent{% endif %}</div>
-      {% endif %}
-    </li>
-  {% else %}<li class="text-sm text-slate-500 py-3">No messages yet. Say hello!</li>{% endfor %}
-</ul>
-{% endcall %}
+    <h1 class="text-xl font-semibold">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</h1>
+  {% endif %}
 </div>
+
+<div class="grid gap-5 lg:grid-cols-3">
+  <section class="lg:col-span-2 flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div class="h-[60vh] min-h-80 overflow-y-auto px-4 sm:px-6 py-4" data-thread-scroll>
+      <ul class="space-y-1" data-live-messages aria-live="polite"
+          data-message-updates-url="{{ url_for('program.message_updates', match_id=m.id) }}">
+        {% include "program/_message_list.html" %}
+      </ul>
+    </div>
+    <p class="hidden px-4 py-1 text-xs text-amber-700 bg-amber-50" data-message-sync-status aria-live="polite"></p>
+    {% if participant %}
+    <form method="post" class="flex items-end gap-2 border-t border-slate-200 bg-slate-50 p-3" data-message-form>
+      {{ csrf() }}
+      <textarea name="body" rows="1" required placeholder="Write a message…" aria-label="Message"
+                class="{{ input_cls() }} resize-none max-h-40 bg-white" data-message-input></textarea>
+      {{ btn("Send") }}
+    </form>
+    <p class="px-4 pb-2 bg-slate-50 text-[11px] text-slate-400">Enter to send · Shift+Enter for a new line</p>
+    {% endif %}
+  </section>
+
+  <aside>
+  {% call card("Meetings") %}
+    <ul class="space-y-2 mb-1">
+      {% for mt in meetings %}
+        <li class="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+          <span class="mt-1.5 h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+          <span class="flex-1"><span class="block font-medium">{{ mt.starts_at.strftime('%a, %b %d · %I:%M %p') }}</span>
+            {% if mt.note %}<span class="text-slate-500">{{ mt.note }}</span>{% endif %}</span>
+          {% if current_user.id == m.mentor_id %}
+            <form method="post" action="{{ url_for('program.cancel_meeting', meeting_id=mt.id) }}"
+                  onsubmit="return confirm('Cancel this meeting?')">
+              {{ csrf() }}<button class="text-xs text-slate-500 hover:text-red-600">Cancel</button>
+            </form>
+          {% endif %}
+        </li>
+      {% else %}
+        <li class="text-sm text-slate-500">
+          {% if current_user.id == m.mentor_id %}No meeting scheduled. Agree on a time in the chat, then add it here.
+          {% elif current_user.id == m.mentee_id %}No meeting scheduled yet. Your mentor will set one; it'll show on your dashboard calendar.
+          {% else %}No meeting scheduled.{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    {% if current_user.id == m.mentor_id %}
+    <form method="post" action="{{ url_for('program.schedule_meeting', match_id=m.id) }}" class="space-y-2 mt-3 pt-3 border-t border-slate-100">
+      {{ csrf() }}
+      <input type="datetime-local" name="starts_at" required class="{{ input_cls() }}" aria-label="Meeting date and time">
+      <input name="note" maxlength="200" placeholder="Where / agenda (optional)" class="{{ input_cls() }}">
+      {{ btn("Schedule meeting") }}
+    </form>
+    {% endif %}
+  {% endcall %}
+  </aside>
+</div>
+
+{% if participant %}
+<script>
+  (() => {
+    const thread = document.querySelector("[data-live-messages]");
+    const scroller = document.querySelector("[data-thread-scroll]");
+    const status = document.querySelector("[data-message-sync-status]");
+    if (!thread || !scroller || !status) return;
+    const updateUrl = thread.dataset.messageUpdatesUrl;
+    const NEW_FOR_MS = 10000;  // how long a new message stays highlighted once it's on screen
+    const newSince = new Map();  // message id -> when it was first shown as new
+    let updating = false;
+    let lastHtml = thread.innerHTML;
+
+    const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+    const scrollToBottom = () => { scroller.scrollTop = scroller.scrollHeight; };
+
+    // Keep the highlight (and the "New messages" divider) on for NEW_FOR_MS even after the
+    // next refresh, when the server no longer reports those messages as unread.
+    const applyHighlights = () => {
+      const now = Date.now();
+      let first = null;
+      thread.querySelectorAll("[data-message-id]").forEach((li) => {
+        const id = li.dataset.messageId;
+        if (li.hasAttribute("data-new") && !newSince.has(id)) newSince.set(id, now);
+        const on = newSince.has(id) && now - newSince.get(id) < NEW_FOR_MS;
+        li.classList.toggle("is-new", on);
+        if (on && !first) first = li;
+      });
+      let divider = thread.querySelector("[data-new-divider]");
+      if (!first && divider) divider.remove();
+      if (first && !divider) {
+        divider = document.createElement("li");
+        divider.dataset.newDivider = "";
+        divider.className = "flex items-center gap-3 py-1 text-xs font-semibold text-brand-600";
+        divider.innerHTML = '<span class="h-px flex-1 bg-brand-300"></span>New messages<span class="h-px flex-1 bg-brand-300"></span>';
+        first.before(divider);
+      }
+    };
+
+    const refreshThread = async () => {
+      if (updating || document.hidden) return;
+      updating = true;
+      try {
+        const response = await fetch(updateUrl, {cache: "no-store"});
+        if (!response.ok) throw new Error(`Message refresh failed (${response.status})`);
+        const data = await response.json();
+        if (data.messages_html !== lastHtml) {
+          const stick = nearBottom();
+          thread.innerHTML = lastHtml = data.messages_html;
+          if (stick || thread.querySelector("[data-new]")) scrollToBottom();
+        }
+        applyHighlights();
+        const badge = document.querySelector("[data-message-unread-badge]");
+        if (badge) {
+          badge.textContent = data.unread_count > 99 ? "99+" : String(data.unread_count);
+          badge.classList.toggle("hidden", data.unread_count === 0);
+          badge.setAttribute("aria-label", `${data.unread_count} unread message${data.unread_count === 1 ? "" : "s"}`);
+          const title = document.title.replace(/^\(\d+\)\s/, "");
+          document.title = data.unread_count > 0 ? `(${data.unread_count}) ${title}` : title;
+        }
+        status.textContent = "";
+        status.classList.add("hidden");
+      } catch (error) {
+        status.textContent = "Messages are temporarily out of date. Reconnecting…";
+        status.classList.remove("hidden");
+        console.error("Unable to refresh the message thread.", error);
+      } finally {
+        updating = false;
+      }
+    };
+
+    // Composer: grows with the text; Enter sends, Shift+Enter adds a line.
+    const form = document.querySelector("[data-message-form]");
+    const input = document.querySelector("[data-message-input]");
+    if (form && input) {
+      const grow = () => { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; };
+      input.addEventListener("input", grow);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          if (input.value.trim()) form.requestSubmit();
+        }
+      });
+      input.focus();
+    }
+
+    const newMessage = thread.querySelector("[data-new]");
+    if (newMessage) newMessage.scrollIntoView({block: "center"}); else scrollToBottom();
+    applyHighlights();
+    window.setInterval(refreshThread, 5000);
+    window.setInterval(applyHighlights, 1000);
+    document.addEventListener("visibilitychange", refreshThread);
+  })();
+</script>
+{% endif %}
 {% endblock %}

@@ -7,15 +7,34 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import storage
+from . import notify, storage
 from .extensions import db
 from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback, Match, Meeting, Message,
                      Submission, User, utcnow)
 
 bp = Blueprint("program", __name__)
+
+
+def unread_message_count(user_id: int) -> int:
+    return (db.session.query(Message)
+            .join(Match, Match.id == Message.match_id)
+            .filter(
+                Match.status == "approved",
+                (Match.mentee_id == user_id) | (Match.mentor_id == user_id),
+                Message.sender_id != user_id,
+                Message.read_at.is_(None),
+            ).count())
+
+
+@bp.app_context_processor
+def _message_notifications():
+    count = 0
+    if current_user.is_authenticated and current_user.role in ("mentee", "mentor"):
+        count = unread_message_count(current_user.id)
+    return {"message_unread_count": count}
 
 
 # --- helpers shared with the dashboard and reminders ---------------------------
@@ -165,21 +184,75 @@ def feedback():
 
 
 # --- messaging -----------------------------------------------------------------
+# Messaging opens only once a mentee and mentor are in an approved match. Until then the
+# Messages tab is shown locked and leads to a notice saying what they're waiting for.
+
+def _approved_matches(user: User) -> list[Match]:
+    return (db.session.query(Match)
+            .filter(Match.status == "approved", (Match.mentee_id == user.id) | (Match.mentor_id == user.id))
+            .all())
+
+
+@bp.app_context_processor
+def _messages_nav():
+    locked = (current_user.is_authenticated and current_user.role in ("mentee", "mentor")
+              and not _approved_matches(current_user))
+    return {"messages_locked": locked}
+
+
+def _messages_locked(match: Match | None = None):
+    """The notice shown instead of messages: the pending match (if any) says what's left."""
+    if match is None:
+        match = (db.session.query(Match)
+                 .filter(Match.status.in_(("proposed", "released")),
+                         (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id))
+                 .order_by(Match.proposed_at.desc()).first())
+    return render_template("program/messages_locked.html", pending=match)
+
 
 @bp.get("/messages/")
 @login_required
 def inbox():
-    rows = (db.session.query(Match)
-            .filter(Match.status == "approved",
-                    (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id)).all())
+    rows = _approved_matches(current_user)
+    if not rows:
+        return _messages_locked()
     if len(rows) == 1:
         return redirect(url_for("program.messages", match_id=rows[0].id))
-    return redirect(url_for("main.dashboard"))  # no match yet, or several: pick one from the dashboard
+    # Several: list the threads.
+    threads = []
+    for m in rows:
+        last = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).first()
+        unread = (db.session.query(Message)
+                  .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
+                  .count())
+        threads.append((m, last, unread))
+    threads.sort(key=lambda t: t[1].sent_at if t[1] else datetime.min, reverse=True)
+    awaiting = (db.session.query(Match)
+                .filter(Match.status == "released",
+                        (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id)).count())
+    return render_template("program/inbox.html", threads=threads, awaiting=awaiting)
+
+
+def _mark_read(m: Match) -> set[int]:
+    """Mark the other side's unread messages as read; return their ids so the page can highlight
+    them as new. Staff viewing a thread don't mark anything read."""
+    if not m.includes(current_user):
+        return set()
+    unread = (db.session.query(Message)
+              .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
+              .all())
+    for msg in unread:
+        msg.read_at = utcnow()
+    db.session.commit()
+    return {msg.id for msg in unread}
 
 
 @bp.route("/messages/<int:match_id>", methods=["GET", "POST"])
 @login_required
 def messages(match_id: int):
+    pending = db.session.get(Match, match_id)
+    if pending and pending.includes(current_user) and pending.status in ("proposed", "released"):
+        return _messages_locked(pending)
     m = _approved_match(match_id)
     if request.method == "POST":
         if not m.includes(current_user):
@@ -188,16 +261,36 @@ def messages(match_id: int):
         if body:
             db.session.add(Message(match_id=m.id, sender_id=current_user.id, body=body))
             db.session.commit()
+            notify.email_unread_messages(m.id, current_user.id)
         return redirect(url_for("program.messages", match_id=m.id))
-    if m.includes(current_user):  # staff viewing a thread doesn't mark it read
-        (db.session.query(Message)
-         .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
-         .update({"read_at": utcnow()}))
-        db.session.commit()
-    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).all()
+    new_ids = _mark_read(m)
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at).all()
     meetings = (db.session.query(Meeting).filter(Meeting.match_id == m.id, Meeting.starts_at >= utcnow() - timedelta(hours=1))
                 .order_by(Meeting.starts_at).all())
-    return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow())
+    return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow(),
+                           new_ids=new_ids)
+
+
+@bp.get("/messages/<int:match_id>/updates")
+@login_required
+def message_updates(match_id: int):
+    m = _approved_match(match_id)
+    new_ids = _mark_read(m)
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at).all()
+    html = render_template("program/_message_list.html", m=m, thread=thread, new_ids=new_ids)
+    count = unread_message_count(current_user.id) if current_user.role in ("mentee", "mentor") else 0
+    response = jsonify(messages_html=html, unread_count=count)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@bp.get("/messages/unread-count")
+@login_required
+def unread_count():
+    count = unread_message_count(current_user.id) if current_user.role in ("mentee", "mentor") else 0
+    response = jsonify(unread_count=count)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/messages/<int:match_id>/meetings")
@@ -217,6 +310,7 @@ def schedule_meeting(match_id: int):
     db.session.add(Message(match_id=m.id, sender_id=current_user.id,
                            body=f"📅 Scheduled a meeting for {starts_at:%a, %b %d at %I:%M %p}." + (f" {note}" if note else "")))
     db.session.commit()
+    notify.email_unread_messages(m.id, current_user.id)
     flash("Meeting scheduled.", "ok")
     return redirect(url_for("program.messages", match_id=m.id))
 
@@ -231,5 +325,6 @@ def cancel_meeting(meeting_id: int):
                            body=f"Cancelled the meeting on {mt.starts_at:%a, %b %d at %I:%M %p}."))
     db.session.delete(mt)
     db.session.commit()
+    notify.email_unread_messages(mt.match_id, current_user.id)
     flash("Meeting cancelled.", "ok")
     return redirect(url_for("program.messages", match_id=mt.match_id))
