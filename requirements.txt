@@ -12,8 +12,11 @@ sqlalchemy==2.1.6
 psycopg[binary]==3.3.6
 pgvector==0.5.1  # vector(384) columns for soft-answer embeddings
 
-# AWS: S3 uploads, SES email (only used when configured)
+# AWS SES email (only used when EMAIL_BACKEND=ses)
 boto3==1.43.118
+
+# CA bundle for the Supabase Storage calls in app/storage.py
+certifi==2026.10.23
 
 # LinkedIn PDF import (app/linkedin.py)
 anthropic==2.2.0

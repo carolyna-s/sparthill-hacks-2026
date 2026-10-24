@@ -1,14 +1,13 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, application_status_badge %}
+{% from "_macros.html" import card %}
 {% from "staff/_summary.html" import summary %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-5">Staff Overview</h1>
 {{ summary(report) }}
 <div class="grid md:grid-cols-2 gap-5">
-  {% call card("Applications") %}
-    {% for s in ['submitted', 'accepted', 'rejected', 'draft'] %}
-      <a href="{{ url_for('staff.applications', status=s) }}" class="flex justify-between text-sm py-1">{{ application_status_badge(s) }}<span>{{ by_status.get(s, 0) }}</span></a>
-    {% endfor %}
+  {% call card("Applicants") %}
+    <p class="text-sm mb-3">{{ applicant_count }} submitted application(s).</p>
+    <a href="{{ url_for('staff.applications') }}" class="text-sm text-brand-600">View applicants →</a>
   {% endcall %}
   {% call card("Matching") %}
     <p class="text-sm mb-3">{{ proposed }} proposed match(es) awaiting approval.</p>

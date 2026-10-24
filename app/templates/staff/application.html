@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, card, btn, tags, application_status_badge, input_cls %}
+{% from "_macros.html" import card, tags, status_badge %}
 {% block content %}
 {% set p = a.user.profile %}
-<a href="{{ url_for('staff.applications', status='pending' if a.status == 'submitted' else 'all') }}" class="text-sm text-slate-500">← Back to Applicants</a>
-<h1 class="text-2xl font-semibold mt-1 mb-1">{{ a.user.name }} {{ application_status_badge(a.status) }}</h1>
+<a href="{{ url_for('staff.applications') }}" class="text-sm text-slate-500">← Back to Applicants</a>
+<h1 class="text-2xl font-semibold mt-1 mb-1">{{ a.user.name }} {{ status_badge(a.status) }}</h1>
 <p class="text-sm text-slate-500 mb-5">{{ a.user.role }} · {{ a.user.email }} · {{ p.headline }} {{ ('· ' ~ p.organization) if p.organization }}</p>
-<div class="grid md:grid-cols-3 gap-5">
-  <div class="md:col-span-2">
+<div class="grid md:grid-cols-1 gap-5">
+  <div>
     {% call card("Application") %}
       {% for key, label in Personality_Questions_Data %}
         <p class="text-sm font-medium">{{ label }}</p>
@@ -26,18 +26,6 @@
       {% endfor %}
       <p class="text-xs text-slate-500">School</p>
       <p class="text-sm">{{ p.school or '—' }}{% if a.user.role == 'mentee' and p.prefers_alumni %} · prefers an alumni mentor{% endif %}</p>
-    {% endcall %}
-  </div>
-  <div>
-    {% call card("Decision") %}
-    <form method="post" class="space-y-3">
-      {{ csrf() }}
-      <textarea name="staff_notes" rows="4" placeholder="Internal notes" class="{{ input_cls() }}">{{ a.staff_notes }}</textarea>
-      <div class="flex flex-wrap gap-2">
-        {{ btn("Approve", "primary", "decision", "accepted") }}
-        {{ btn("Reject", "danger", "decision", "rejected") }}
-      </div>
-    </form>
     {% endcall %}
   </div>
 </div>

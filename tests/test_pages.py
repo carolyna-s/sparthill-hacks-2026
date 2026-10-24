@@ -4,7 +4,7 @@ import pytest
 
 from app import matching
 from app.extensions import db
-from app.models import Application, User
+from app.models import User
 
 from .conftest import login
 
@@ -52,30 +52,7 @@ def test_staff_detail_pages(client, approved):
     login(client, "staff.admin@example.org")
     for path in ["/modules", "/modules/1", f"/messages/{approved[0].id}", "/staff/applications/1",
                  "/staff/matching"]:
-        response = client.get(path)
-        assert response.status_code == 200
-        if path == "/staff/applications/1":
-            assert b">Approve</button>" in response.data
-            assert b">Accept</button>" not in response.data
-
-
-def test_staff_application_review_uses_approve_labels(client):
-    login(client, "staff.admin@example.org")
-
-    pending = client.get("/staff/applications")
-    assert b">Approve</button>" in pending.data
-    assert b">Accept</button>" not in pending.data
-
-    all_applicants = client.get("/staff/applications?status=all")
-    assert b"Approval Status" in all_applicants.data
-    assert b">Approved</span>" in all_applicants.data
-    assert b">Accepted</span>" not in all_applicants.data
-
-    application = db.session.query(Application).filter_by(status="accepted").first()
-    detail = client.get(f"/staff/applications/{application.id}")
-    assert b">Approve</button>" in detail.data
-    assert b">Accept</button>" not in detail.data
-    assert b">Approved</span>" in detail.data
+        assert client.get(path).status_code == 200
 
 
 @pytest.mark.parametrize(

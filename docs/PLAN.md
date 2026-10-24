@@ -377,7 +377,7 @@ points users to the page where they do things themselves.
 | Layer | Choice |
 | --- | --- |
 | Web | Flask + Jinja + Tailwind CDN (built) |
-| Database | Supabase Postgres via SQLAlchemy. SQLite for offline dev and tests |
+| Database | Supabase Postgres via SQLAlchemy, the only runtime database. SQLite only in tests |
 | Migrations | Alembic (`flask db upgrade`). Schema changes only through migrations, never MCP or the dashboard |
 | Files | Supabase Storage, private bucket, signed URLs |
 | Auth | Flask-Login with 4 roles. Supabase Auth is optional later |

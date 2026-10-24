@@ -80,10 +80,11 @@ def test_assign_is_one_to_one():
 
 def test_propose_all_on_seed_data(app):
     created = matching.propose_all()
-    # 4 accepted mentees, 4 mentors: everyone gets a proposal, no mentor twice
+    # Five accepted mentees compete for four mentor slots, so one remains unmatched.
     assert len(created) == 4
     assert len({m.mentee_id for m in created}) == len({m.mentor_id for m in created}) == 4
-    assert matching.unmatched_mentee_ids() == set()
+    assert len(matching.accepted_profiles("mentee")) == 5
+    assert len(matching.unmatched_mentee_ids()) == 1
     assert matching.propose_all() == []
 
 

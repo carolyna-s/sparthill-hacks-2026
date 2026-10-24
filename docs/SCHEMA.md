@@ -1,11 +1,11 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `b5d8e2f4a6c1`;
-Supabase `sparthill-hackathon` is at `c6557a04922b` as of Oct 23, 2026). Table names are the snake_cased
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `b9e4d2a7c315`;
+Supabase `sparthill-hackathon` is at head as of Oct 24, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
 On Postgres, the `vector(384)` columns use pgvector (in the `extensions` schema) with HNSW
-cosine indexes. On SQLite they're JSON lists (`app/types.py`). RLS is enabled on every table
+cosine indexes. In the SQLite test database they're JSON lists (`app/types.py`). RLS is enabled on every table
 with no policies, which blocks Supabase's public Data API. The app connects as a role that
 bypasses RLS.
 
@@ -50,9 +50,8 @@ mean *what I want*; for mentors, *what I have/offer*.
 (`signup` → `matching` → `review` → `released` → `closed`), `signup_opens`, `signup_closes`,
 `review_deadline`, `confirm_days` (default 7), `matched_at`, `released_at`.
 
-**application**: one per user. `status` (`draft` → `submitted` → `accepted` | `rejected`;
-`withdrawn` if a mentee leaves after matching), `answers` (JSON), `submitted_at`,
-`reviewed_by_id`, `reviewed_at`, `staff_notes`.
+**application**: one per user. `status` (`draft` → `accepted`; `withdrawn` if a mentee leaves
+after matching; older records may retain `rejected`), `answers` (JSON), `submitted_at`.
 
 **agreement**: versioned agreement text. `title`, `version`, `body`, `audience` (`mentee` |
 `mentor` | `all`), `is_active`.
@@ -141,4 +140,9 @@ No page collects ratings right now (the module page's rating form was removed), 
 holds older rows.
 
 **reminder_log**: `user_id` + `key` (unique; e.g. `prework:3`, `match-release:12`), `sent_at`.
-Dedupes reminders and automated emails.
+Dedupes reminders and automated emails. A reminder is only recorded once its email didn't fail,
+so failed ones are retried on the next run.
+
+**email_log**: every outbound email (`app/notify.py`). `user_id` (null if not a user),
+`to_email`, `subject`, `body`, `key` (same as `reminder_log.key`, e.g. `message:42`), `backend`
+(`console` | `ses`), `status` (`logged` = console only, `sent`, `failed`), `error`, `created_at`.
