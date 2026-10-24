@@ -85,10 +85,10 @@ def load_user(user_id: str) -> User | None:
     return user if user and user.is_active else None  # deactivating signs them out everywhere
 
 
-def _tags():
+def _tags(default=list):
     """A JSON list column that defaults to [] (server default too, so adding it to a table
     with existing rows works)."""
-    return db.Column(db.JSON, default=list, server_default="[]", nullable=False)
+    return db.Column(db.JSON, default=default, server_default="[]", nullable=False)
 
 
 class Profile(db.Model):
@@ -112,7 +112,7 @@ class Profile(db.Model):
     concentration = db.Column(db.String(120))
     pathways = _tags()
     years_experience = db.Column(db.Integer)
-    languages = _tags()
+    languages = _tags(default=lambda: ["English"])  # the usual answer; blank still matches as English
     language_required = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
     organizations = _tags()  # mentee: target orgs; mentor: current/past employers
     clubs_prior = _tags()

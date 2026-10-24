@@ -94,7 +94,9 @@
         {% endfor %}
       </div>
     </fieldset>
-    {{ tag_picker("languages", "Languages you're comfortable meeting in", taxonomy.languages, sel.languages, required=True, suggested=suggested.get('languages', ())) }}
+    <p class="text-sm font-medium mb-2">Languages you're comfortable meeting in</p>
+    <p class="text-sm text-slate-500 mb-2"><span class="inline-block border rounded-full px-3 py-1 bg-brand-600 text-white border-brand-600 mr-1">English</span> is included for everyone.</p>
+    {{ tag_picker("languages", "Any others?", taxonomy.languages|reject("equalto", "English")|list, sel.languages, hint="optional · pick all that apply", suggested=suggested.get('languages', ())) }}
   {% endcall %}
 
   {% elif step == 3 %}

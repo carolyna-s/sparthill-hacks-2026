@@ -48,6 +48,9 @@ created by an admin.
 6. **Reminders by email** (via `flask send-reminders` or the cron endpoint), each sent at most
    once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), and messages
    left unread for a while.
+7. **Instant emails** (templates in `app/templates/email/`): both people get one when their match is
+   confirmed, and 3 minutes after a message the recipient gets "You have new messages from X" if
+   they haven't opened the thread yet, at most once an hour per thread.
 
 ### Staff
 
@@ -209,7 +212,7 @@ app/
   routes.py       landing, dashboard, application edits, /healthz, cron endpoint
   storage.py      file uploads (Supabase Storage; local disk in tests)
   types.py        vector column type (pgvector on Postgres, JSON on SQLite)
-  notify.py       email (console or SES), each logged to email_log
+  notify.py       email (console, SMTP or SES), each logged to email_log
   seed.py         demo data
   templates/      Jinja + Tailwind via CDN (no frontend build)
 migrations/       Alembic migrations
@@ -228,7 +231,7 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 | `SUPABASE_URL` | prefilled in `.env.example` | project API URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | uploads fail | the project's secret / service_role key (server-only) |
 | `SUPABASE_STORAGE_BUCKET` | `uploads` | another private bucket |
-| `EMAIL_BACKEND` | `console` | `ses` |
+| `EMAIL_BACKEND` | `console` (log only) | `smtp` (Gmail: set `MAIL_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD` = app password) or `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |
 | `OPENAI_API_KEY` | text answers not used in matching | OpenAI API key (embeddings only), then run `flask embed` once |

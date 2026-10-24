@@ -8,7 +8,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from flask_login import current_user
 from sqlalchemy import func, or_
 
-from . import matching
+from . import matching, notify
 from .audit import record_change
 from .auth import change_password, role_required
 from .extensions import db
@@ -85,6 +85,7 @@ def decide_matching_override(request_id: int, decision: str):
         return redirect(url_for("admin.dashboard"))
 
     mentee, mentor = override_request.mentee, override_request.mentor
+    match = None
     if decision == "approve":
         accepted_mentees = matching.accepted_profiles("mentee")
         accepted_mentors = matching.accepted_profiles("mentor")
@@ -141,6 +142,8 @@ def decide_matching_override(request_id: int, decision: str):
         )
         flash("Override request denied; the mentee is back in the matching pool.", "ok")
     db.session.commit()
+    if match is not None:
+        notify.notify_match_released(match)
     return redirect(url_for("admin.dashboard"))
 
 
@@ -259,6 +262,7 @@ def update_user(user_id: int):
                  .first())
     old_match_id = old_match.other(u).id if old_match else None
     changed = []
+    released = None
 
     if u.role in ("mentee", "mentor"):
         new_role = request.form.get("role")
@@ -296,7 +300,7 @@ def update_user(user_id: int):
                     match.decided_by_id = current_user.id
                     match.decided_at = utcnow()
             if target:
-                db.session.add(Match(
+                released = Match(
                     mentee_id=u.id if u.role == "mentee" else target.id,
                     mentor_id=u.id if u.role == "mentor" else target.id,
                     status="released",
@@ -306,7 +310,8 @@ def update_user(user_id: int):
                     decided_at=utcnow(),
                     released_at=utcnow(),
                     confirm_by=utcnow() + timedelta(days=7),
-                ))
+                )
+                db.session.add(released)
             changed.append("manual match assignment override changed")
     elif "role" in request.form or "matched_to" in request.form:
         abort(400)
@@ -321,6 +326,8 @@ def update_user(user_id: int):
     if changed:
         record_change("account_updated", f"{u.name}: " + "; ".join(changed), target_user_id=u.id)
     db.session.commit()
+    if released is not None:
+        notify.notify_match_released(released)
     flash("Account changes saved.", "ok")
     return redirect(url_for("admin.user", user_id=u.id))
 

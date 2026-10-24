@@ -133,7 +133,7 @@ def test_dashboard_application_edits_answers_without_changing_status(client):
     }
     assert user.profile.organization == "Updated Org"
     assert user.profile.availability == ["Monday - night"]
-    assert user.profile.languages == ["Spanish"]
+    assert user.profile.languages == ["English", "Spanish"]  # English is always included
     assert user.profile.industry == "Software Development"
     assert user.profile.interests == "Updated interests"
     assert user.profile.prefers_alumni
@@ -250,7 +250,7 @@ def test_profile_back_saves_without_requiring(client):
     resp = client.post("/profile/2", data={"nav": "back", "languages": ["Korean"]})
     assert resp.headers["Location"].endswith("/profile/1")
     user = db.session.query(User).filter_by(email="bp@x.org").one()
-    assert user.profile.languages == ["Korean"]
+    assert user.profile.languages == ["English", "Korean"]
 
 
 def test_register_requires_school(client):
@@ -269,10 +269,11 @@ def test_required_fields_block_next(client):
     user = db.session.query(User).filter_by(email="nm@x.org").one()
     assert user.profile.school == "CC"
 
+    resp = client.post("/profile/2", data={"languages": ["Spanish"]})
+    assert resp.headers["Location"].endswith("/profile/2")  # availability is required too
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
-    assert resp.headers["Location"].endswith("/profile/2")  # language is required too
-    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"]})
-    assert resp.headers["Location"].endswith("/profile/3")
+    assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
+    assert user.profile.languages == ["English"]
     client.post("/profile/3", data={})
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
@@ -309,6 +310,8 @@ def test_review_match_and_message(client):
     assert match.status == "released"
 
     login(client, match.mentee.email)
+    inbox = client.get("/messages/")
+    assert inbox.status_code == 200 and b"awaiting confirmation" in inbox.data
     dashboard = client.get("/dashboard")
     assert b"Action required:" in dashboard.data
     assert b"Confirm or decline this match" in dashboard.data
@@ -317,6 +320,7 @@ def test_review_match_and_message(client):
     assert b"Confirm match" in notification.data and b"Decline match" in notification.data
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
     assert match.status == "approved" and match.mentee_confirmed_at is not None
+    assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
     assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
