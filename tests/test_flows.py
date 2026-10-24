@@ -432,6 +432,34 @@ def test_undo_application_decision(client):
     assert pending.status == "submitted"
 
 
+
+def test_rematch_keeps_approved_and_reruns_only_rejected_and_unmatched(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    ids = {u.email.split("@")[0]: u.id for u in db.session.query(User)}
+    proposed = db.session.query(Match).filter_by(status="proposed").all()
+    assert {(m.mentee_id, m.mentor_id) for m in proposed} >= {(ids["jordan.kim"], ids["priya.raman"]),
+                                                              (ids["riley.chen"], ids["sam.okafor"])}
+    deny = [m for m in proposed if m.mentee_id in (ids["jordan.kim"], ids["riley.chen"])]
+    keep = [m for m in proposed if m not in deny]
+    for m in keep:
+        client.post(f"/staff/matches/{m.id}/approve")
+    for m in deny:
+        client.post(f"/staff/matches/{m.id}/reject", data={"reason": "fit_concern", "comment": "Not a fit."})
+    approved = {(m.mentee_id, m.mentor_id) for m in keep}
+
+    # Pool: Jordan and Riley, with Priya and Sam free. Neither pair shares a time slot, and the
+    # rejected pairs are out, so they're matched anyway and flagged.
+    client.post("/staff/matching/propose-all")
+    assert {(m.mentee_id, m.mentor_id) for m in db.session.query(Match).filter_by(status="approved")} == approved
+    redo = {m.mentee_id: m for m in db.session.query(Match).filter_by(status="proposed")}
+    assert {me: m.mentor_id for me, m in redo.items()} == {ids["jordan.kim"]: ids["sam.okafor"],
+                                                          ids["riley.chen"]: ids["priya.raman"]}
+    assert all(m.rematch_round == 2 and m.score_breakdown["filters_failed"] == ["availability"]
+               for m in redo.values())
+    page = client.get("/staff/matching").data
+    assert b"re-match #2" in page and b"No shared availability" in page
+
 def test_staff_people_dashboards(client):
     login(client, "staff.admin@example.org")
     page = client.get("/staff/people?role=mentee&q=jordan").data

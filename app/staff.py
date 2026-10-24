@@ -193,11 +193,13 @@ def match_review(match_id: int):
 @bp.post("/matching/propose-all")
 def propose_all():
     created = matching.propose_all()
+    left = len(matching.unmatched_mentee_ids())
     if created:
-        _offer_undo(f"Proposed {len(created)} matches.", url_for("staff.cancel_proposals"),
-                    ids=[m.id for m in created])
+        _offer_undo(f"Proposed {len(created)} matches." + (f" {left} mentees couldn't be matched (no compatible "
+                                                           "mentor with an open slot)." if left else ""),
+                    url_for("staff.cancel_proposals"), ids=[m.id for m in created])
     else:
-        flash("Nothing to propose: every accepted mentee already has a match or no mentor fits.", "ok")
+        flash("Nothing to propose: every accepted mentee already has a match or no mentor is free.", "ok")
     return redirect(url_for("staff.matching_page"))
 
 
@@ -224,7 +226,8 @@ def propose_one():
     choice = next((c for c in matching.ranking_for(mentee_id, limit=None) if c.mentor_id == mentor_id), None)
     if choice is None:
         abort(409)  # mentor not accepted or already matched
-    m = Match(mentee_id=mentee_id, mentor_id=mentor_id, score=choice.score, score_breakdown=choice.breakdown)
+    m = Match(mentee_id=mentee_id, mentor_id=mentor_id, score=choice.score, score_breakdown=choice.breakdown,
+              rematch_round=matching.rematch_round(mentee_id))
     db.session.add(m)
     db.session.commit()
     _offer_undo(f"Added {m.mentee.name} → {m.mentor.name} to the proposals. Approve or reject it above.",

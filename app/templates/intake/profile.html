@@ -95,7 +95,6 @@
       </div>
     </fieldset>
     {{ tag_picker("languages", "Languages you're comfortable meeting in", taxonomy.languages, sel.languages, required=True, suggested=suggested.get('languages', ())) }}
-    {% if mentor %}<p class="text-sm text-slate-500">Mentorship is one-to-one: you'll be matched with one mentee.</p>{% endif %}
   {% endcall %}
 
   {% elif step == 3 %}

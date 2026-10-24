@@ -13,8 +13,7 @@ What the framework doesn't do yet, roughly in priority order.
 - **Mentee choice.** Mentees can't see or rank their top mentors; staff decide. Consider
   showing mentees their top 3 and letting them pick or rank before staff approval.
 - **Matching inputs.** Add availability/time zone, location, identity or background
-  preferences, and hard constraints (e.g. same organization excluded). Consider an
-  optimal assignment (min-cost flow) instead of greedy once cohorts are large.
+  preferences, and hard constraints (e.g. same organization excluded).
 - **Cohorts.** Events and matches carry `cohort_id`, but pages don't filter by cohort yet.
 - **Staff tooling.** No UI to edit agreements, questions, or the taxonomy; no way to
   promote users to staff; no editing or deleting events.
