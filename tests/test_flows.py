@@ -172,10 +172,22 @@ def test_mentee_intake_flow(client):
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Modules" in blocked.data
 
-    resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
-                                           "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
+    preferences = {
+        "industry": "  software   DEVELOPMENT ",
+        "development_areas": ["Open to Any"],
+        "goals": ["Undecided"],
+        "education_paths": ["Undecided"],
+        "goals_other": "write a book",
+        "prefers_alumni": "1",
+    }
+    page = client.get("/profile/3")
+    assert b"Open to Any" in page.data
+    assert b"Undecided" in page.data
+    resp = client.post("/profile/3", data=preferences)
     assert resp.headers["Location"].endswith("/profile/4")
-    assert user.profile.goals == ["switch careers"]
+    assert user.profile.development_areas == ["Open to Any"]
+    assert user.profile.goals == ["Undecided"]
+    assert user.profile.education_paths == ["Undecided"]
     assert user.profile.goals_other == "write a book"
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
@@ -216,7 +228,7 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/3")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
-    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/4")
+    assert client.post("/profile/3", data=preferences).headers["Location"].endswith("/profile/4")
 
     profile_page = client.get("/profile/4")
     assert b"What subjects are you interested in learning more about?" in profile_page.data
@@ -280,7 +292,17 @@ def test_required_fields_block_next(client):
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
     assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
     assert user.profile.languages == ["English"]
-    client.post("/profile/3", data={})
+    page = client.get("/profile/3")
+    assert b"entrepreneurship" in page.data
+    assert b"Open to Any" not in page.data
+    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/3")
+    resp = client.post("/profile/3", data={
+        "industry": "Education Administration",
+        "development_areas": ["leadership"],
+        "goals": ["entrepreneurship"],
+        "education_paths": ["4-year university"],
+    })
+    assert resp.headers["Location"].endswith("/profile/4")
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
     assert b"What type of mentor do you see yourself being?" in profile_page.data

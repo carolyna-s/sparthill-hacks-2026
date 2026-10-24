@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from . import embeddings
 from .extensions import db
 from .models import Application, Match, MatchExclusion, MatchOverrideRequest, Profile, User
+from .taxonomy import OPEN_TO_ANY, UNDECIDED
 
 MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 
@@ -140,6 +141,12 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
             wanted = set(mentee.get(dim) or [])
             shared = sorted(wanted & set(mentor.get(dim) or []))
             if not wanted:
+                sim = 1.0
+            elif dim == "development_areas" and OPEN_TO_ANY in wanted:
+                shared = sorted(set(mentor.get(dim) or []) - {OPEN_TO_ANY})
+                sim = 1.0
+            elif dim in ("goals", *PREFERENCE) and UNDECIDED in wanted:
+                shared = []
                 sim = 1.0
             elif dim in PREFERENCE:
                 sim = 1.0 if shared else 0.0

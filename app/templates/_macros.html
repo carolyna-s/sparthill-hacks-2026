@@ -18,7 +18,7 @@
 {% endmacro %}
 
 {% macro tag_picker(name, label, options, selected, hint=None, suggested=(), required=False) %}
-<fieldset class="mb-5">
+<fieldset class="mb-5" {% if required %}data-required-tag-group aria-required="true" tabindex="-1"{% endif %}>
   <legend class="text-sm font-medium mb-2">{{ label }}{% if required %} {{ req() }}{% endif %}{% if hint %} <span class="font-normal text-slate-500">· {{ hint }}</span>{% endif %}</legend>
   <div class="flex flex-wrap gap-2">
     {% for opt in options %}
@@ -27,6 +27,7 @@
       </label>
     {% endfor %}
   </div>
+  {% if required %}<p class="hidden text-sm text-red-600 mt-2" data-tag-required-error>Select at least one option.</p>{% endif %}
 </fieldset>
 {% endmacro %}
 

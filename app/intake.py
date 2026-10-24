@@ -12,7 +12,7 @@ from .auth import change_password, role_required
 from .extensions import db
 from .models import Agreement, AgreementSignature, Application, Cohort, User, utcnow
 from .program import unsigned_agreements
-from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY, with_base_language
+from .taxonomy import DAYS, INDUSTRIES, PERIODS, taxonomy_for_role, with_base_language
 
 bp = Blueprint("intake", __name__)
 
@@ -71,8 +71,7 @@ Industry_Relevant_Prompt_Data = {
 }
 
 
-# The sign-up form, one page per step. Steps 1-2 (contact info and the hard filters matching
-# can't do without) are required; 3-4 open once they're done and can be left blank.
+# The sign-up form, one page per step.
 STEPS = ("About you", "Availability & language", "Preferences", "In your own words")
 
 # (step, check, what to ask for when it's missing)
@@ -81,6 +80,10 @@ REQUIRED = [
     (1, lambda u: u.email, "your email"),
     (1, lambda u: u.profile.school, "your school"),
     (2, lambda u: u.profile.availability, "at least one time you're available"),
+    (3, lambda u: u.profile.industry, "your industry"),
+    (3, lambda u: u.profile.development_areas, "at least one skill preference"),
+    (3, lambda u: u.profile.goals, "at least one goal"),
+    (3, lambda u: u.profile.education_paths, "an educational path"),
 ]
 
 # Tag pickers on each step.
@@ -88,7 +91,12 @@ STEP_TAGS = {2: ("availability", "languages"), 3: ("development_areas", "goals",
 
 
 def missing_fields(user: User, step: int | None = None) -> list[str]:
-    return [label for s, ok, label in REQUIRED if step in (None, s) and not ok(user)]
+    return [
+        label for s, ok, label in REQUIRED
+        if step in (None, s)
+        and not (s == 3 and user.application is not None and user.application.status != "draft")
+        and not ok(user)
+    ]
 
 
 def signup_next_step(user: User) -> str | None:
@@ -146,8 +154,10 @@ def _onboarding_session_key(user: User) -> str:
 
 
 def _resume_profile_step(user: User) -> int:
-    unfinished = [step for step, check, _ in REQUIRED if not check(user)]
-    return min(unfinished) if unfinished else 4
+    for step in range(1, len(STEPS) + 1):
+        if missing_fields(user, step) or (step == 4 and missing_setup_answers(user)):
+            return step
+    return len(STEPS)
 
 
 def canonical_industry(typed: str) -> str:
@@ -242,8 +252,12 @@ def account_profile():
 def profile_step(step: int):
     if not 1 <= step <= len(STEPS):
         abort(404)
-    if step > 2 and missing_fields(current_user):
-        flash("Finish the required steps first: add " + " and ".join(missing_fields(current_user)) + ".", "error")
+    missing_previous = [
+        label for previous_step in range(1, step)
+        for label in missing_fields(current_user, previous_step)
+    ]
+    if missing_previous:
+        flash("Finish the required steps first: add " + " and ".join(missing_previous) + ".", "error")
         return redirect(url_for("intake.profile"))
     session[_onboarding_session_key(current_user)] = step
     if request.method == "GET":
@@ -315,8 +329,9 @@ def _import_linkedin(user: User, file) -> bool:
 
 def _save_tags(user: User, step: int) -> None:
     p = user.profile
+    taxonomy = taxonomy_for_role(user.role)
     for dim in STEP_TAGS[step]:
-        setattr(p, dim, [t for t in request.form.getlist(dim) if t in TAXONOMY[dim]])
+        setattr(p, dim, [t for t in request.form.getlist(dim) if t in taxonomy[dim]])
     if "languages" in STEP_TAGS[step]:
         p.languages = with_base_language(p.languages)
     if p.linkedin_data:  # suggestions on this step have been seen; don't re-add ones they removed
@@ -357,16 +372,25 @@ SAVE = {1: _save_about, 2: _save_availability, 3: _save_preferences, 4: _save_qu
 
 def _render_step(step: int):
     p = current_user.profile
+    taxonomy = taxonomy_for_role(current_user.role)
     data = p.linkedin_data or {}
     parsed = {} if step in data.get("reviewed", []) else data  # LinkedIn suggestions, pre-selected
     suggested_tags = parsed.get("tags", {})
-    sel = {dim: list(dict.fromkeys(getattr(p, dim) + suggested_tags.get(dim, []))) for dim in TAXONOMY}
+    sel = {dim: list(dict.fromkeys(getattr(p, dim) + suggested_tags.get(dim, []))) for dim in taxonomy}
     suggested = {dim: set(v) - set(getattr(p, dim)) for dim, v in suggested_tags.items()}
     suggested["industry"] = bool(parsed.get("industry")) and not p.industry
+    locked_steps = {
+        n for n in (3, 4)
+        if any(missing_fields(current_user, previous_step) for previous_step in range(1, n))
+    }
+    done = {
+        n: not missing_fields(current_user, n) and (n != 4 or not missing_setup_answers(current_user))
+        for n in range(1, len(STEPS) + 1)
+    }
     return render_template("intake/profile.html", p=p, step=step, steps=STEPS,
-                           done={s: not missing_fields(current_user, s) for s in (1, 2)},
-                           locked=bool(missing_fields(current_user)),
+                           done=done, locked_steps=locked_steps,
                            days=DAYS, periods=PERIODS, industries=INDUSTRIES, sel=sel,
+                           taxonomy=taxonomy,
                            industry=p.industry or parsed.get("industry", ""), suggested=suggested,
                            Personality_Questions_Data=Personality_Questions_Data[current_user.role],
                            Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data[current_user.role],
