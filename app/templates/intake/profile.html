@@ -7,18 +7,11 @@
 <h1 class="text-2xl font-semibold mb-1">Your profile</h1>
 <p class="text-sm text-slate-500 mb-6">Complete the required questions in steps 1, 2, and 4 to finish account setup. Preferences in step 3 are optional.</p>
 
-{# Stepper: required steps, a dashed divider, then the optional ones. #}
+{# Stepper for the profile setup questions. #}
 <nav aria-label="Sign-up steps" class="mb-6">
   <ol class="flex items-start">
     {% for label in steps %}
       {% set n = loop.index %}
-      {% if n == 3 %}
-        <li aria-hidden="true" class="self-stretch flex flex-col items-center mx-1 sm:mx-3">
-          <span class="flex-1 border-l-2 border-dashed border-fuchsia-300"></span>
-          <span class="text-[10px] uppercase tracking-wide text-fuchsia-500 py-1">optional</span>
-          <span class="flex-1 border-l-2 border-dashed border-fuchsia-300"></span>
-        </li>
-      {% endif %}
       {% set reachable = n <= 2 or not locked %}
       <li class="flex-1 min-w-0">
         <a {% if reachable and n != step %}href="{{ url_for('intake.profile_step', step=n) }}"{% endif %}
