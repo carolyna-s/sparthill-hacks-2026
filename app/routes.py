@@ -304,6 +304,8 @@ def _month_calendar(meetings: list[Meeting]) -> dict:
     return {"title": today.strftime("%B %Y"), "today": today.day, "weeks": weeks, "days": by_day}
 
 
+# Cloud Run's front end swallows /healthz, so /health is the one to hit there.
+@bp.get("/health")
 @bp.get("/healthz")
 def healthz():
     db.session.execute(db.text("SELECT 1"))

@@ -15,6 +15,7 @@ from .conftest import login
 
 def test_healthz(client):
     assert client.get("/healthz").json == {"ok": True}
+    assert client.get("/health").json == {"ok": True}
 
 
 def test_account_profile_requires_password_and_keeps_identity_read_only(client):
