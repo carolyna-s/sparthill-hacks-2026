@@ -10,14 +10,14 @@ pages are Jinja templates styled with Tailwind, which loads from a CDN.
 sparthill-hacks-2026/
 ├── app/                  the Flask application (all Python + templates)
 │   ├── templates/        Jinja pages, one folder per feature area
-│   └── static/           static assets (empty for now)
+│   └── static/           static assets (logos)
 ├── migrations/           Alembic database migrations (generated, then committed)
 ├── tests/                pytest suite
 ├── docs/                 all Markdown docs: README, plan, schema, known gaps, this file
 ├── wsgi.py               entry point: `python wsgi.py` (dev) or `gunicorn wsgi:app` (prod)
 ├── gunicorn.conf.py      production server settings
-├── Dockerfile            production image: runs migrations, then gunicorn
-├── docker-compose.yml    optional: app + local Postgres
+├── Dockerfile            production image for Cloud Run: runs migrations, then gunicorn
+├── docker-compose.yml    optional: run the production image locally against Supabase
 ├── requirements.txt      runtime dependencies
 ├── requirements-dev.txt  runtime + test dependencies
 ├── .env.example          template for .env (copy it; never commit .env)
@@ -52,7 +52,7 @@ go with them.
 
 | File | URLs | Purpose | Templates |
 | --- | --- | --- | --- |
-| `routes.py` | `/`, `/dashboard`, `/dashboard/application`, `/healthz`, `/internal/cron/reminders` | Landing page, each user's dashboard (staff go to `/staff`, admins to `/admin`), editing a submitted application, health check, and the cron endpoint that sends scheduled reminders | `landing.html`, `dashboard.html`, `application.html` |
+| `routes.py` | `/`, `/dashboard`, `/dashboard/application`, `/health` (also `/healthz`), `/internal/cron/reminders` | Landing page, each user's dashboard (staff go to `/staff`, admins to `/admin`), editing a submitted application, health check, and the cron endpoint that sends scheduled reminders | `landing.html`, `dashboard.html`, `application.html` |
 | `auth.py` | `/register`, `/login`, `/logout` | Email and password accounts, plus the `role_required(...)` decorator that limits a page to certain roles | `auth/` |
 | `intake.py` | `/profile/<step>`, `/account`, `/apply`, `/agreements` | The onboarding gate (`require_profile_setup` keeps mentees and mentors on their sign-up step until it's done), the 4-step sign-up form (`STEPS`; steps 1-2 required, see `REQUIRED`), account settings, application submit (questions in `Personality_Questions_Data`), and signing digital agreements | `intake/`, `account/` |
 | `program.py` | `/modules`, `/submissions/<id>/file`, `/messages/<id>`, `/meetings/<id>`, `/feedback` | Modules with pre-work and post-work uploads (post-work opens once the session starts, see `Event.is_open`), attendance check-ins, messages between a mentor and mentee, mentor-scheduled meetings, and the `/feedback` ratings endpoint (no page links to it right now) | `program/` |
@@ -73,13 +73,13 @@ go with them.
 
 ### Infrastructure adapters
 
-These files connect the app to Supabase and AWS based on settings in `.env`.
+These files connect the app to Supabase and the email provider based on settings in `.env`.
 
 | File | Locally | In production |
 | --- | --- | --- |
 | `config.py` | Reads `.env`; `DATABASE_URL` must be Supabase (tests swap in SQLite) | (same) |
 | `storage.py` | Supabase Storage bucket (`./data/uploads` under pytest only) | (same) |
-| `notify.py` | Prints emails to the console; logs each to `email_log` | Sends through Amazon SES, when `EMAIL_BACKEND=ses` |
+| `notify.py` | Prints emails to the console; logs each to `email_log` | Sends through Gmail SMTP (`EMAIL_BACKEND=smtp`) or Amazon SES (`EMAIL_BACKEND=ses`) |
 | `extensions.py` | Shared `db`, `migrate`, `login_manager`, and `csrf` objects, imported everywhere so imports don't loop | (same) |
 
 ### Other
@@ -111,6 +111,9 @@ Run them with `pytest`. Tests always use a throwaway SQLite database, never the 
 | `test_pages.py` | Every page renders for every role, which catches template errors |
 | `test_flows.py` | End-to-end HTTP flows for each role, with checks on what lands in the database |
 | `test_matching.py` | Unit tests for the scoring and assignment math in `matching.py` |
+| `test_embeddings.py` | Embedding text answers and using them in the match score |
+| `test_notify.py` | Email backends and the `email_log` records |
+| `test_emails.py` | Match, message, and reminder emails |
 
 ## `docs/`
 

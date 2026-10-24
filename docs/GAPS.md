@@ -4,8 +4,8 @@ What the framework doesn't do yet, roughly in priority order.
 
 ## Product
 
-- **Real-time messaging.** Messages need a page reload. Next step: poll with a small fetch
-  loop or HTMX; WebSockets (API Gateway WebSocket or Flask-SocketIO) only if needed.
+- **Real-time messaging.** Threads poll every 5 seconds and the unread badge every 15. Move to
+  WebSockets or server-sent events only if polling load becomes a problem.
 - **Charts on reports.** Reporting is tables and totals. Add trends over time (attendance
   per event, rating distribution) and CSV export.
 - **Satisfaction surveys.** Nothing collects ratings right now (the 1–5 form on the module page
@@ -25,10 +25,11 @@ What the framework doesn't do yet, roughly in priority order.
 ## Platform
 
 - **Auth hardening.** Password reset, email verification, rate limiting on login.
-  Optionally move to Amazon Cognito.
+  Optionally move to Supabase Auth.
 - **Uploads.** No file type allow-list or virus scanning.
-- **Privacy.** No account deletion / data export flow; decide retention for messages
-  and submissions.
-- **Observability.** Logs go to stdout (CloudWatch on App Runner). Add error tracking.
-- **Infrastructure as code.** AWS setup in `docs/PLAN.md` is manual; capture it in
-  CDK or Terraform, plus a GitHub Actions workflow to build, push to ECR, and deploy.
+- **Privacy.** Admins can delete accounts, but users can't delete or export their own data;
+  decide retention for messages and submissions.
+- **Observability.** Logs go to stdout (Cloud Logging on Cloud Run). Add error tracking.
+- **Deploy automation.** Cloud Run deploys are manual (`gcloud run deploy`, see the README).
+  Add a Cloud Build trigger or GitHub Actions workflow that runs `pytest`, builds, and deploys
+  on push to `main`, and keep env vars in Secret Manager.

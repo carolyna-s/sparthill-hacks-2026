@@ -317,7 +317,7 @@ def healthz():
 @bp.post("/internal/cron/reminders")
 @csrf.exempt
 def cron_reminders():
-    """Called by EventBridge Scheduler (or any cron) with `X-Cron-Secret`."""
+    """Called by Cloud Scheduler (or any cron) with `X-Cron-Secret`."""
     secret = current_app.config["CRON_SECRET"]
     if not secret or not hmac.compare_digest(request.headers.get("X-Cron-Secret", ""), secret):
         abort(403)

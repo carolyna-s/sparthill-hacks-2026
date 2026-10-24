@@ -2,7 +2,7 @@
 
 `send_due_reminders()` is idempotent: each reminder has a key, and ReminderLog stops the
 same key going to the same person twice (every attempt, sent or failed, is also in EmailLog). Run it as often as you like — locally with
-`flask send-reminders`, on AWS via EventBridge Scheduler → POST /internal/cron/reminders.
+`flask send-reminders`, on Cloud Run via Cloud Scheduler → POST /internal/cron/reminders.
 """
 
 from __future__ import annotations
