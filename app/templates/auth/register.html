@@ -15,7 +15,7 @@
     <input name="password" type="password" placeholder="Password (8+ characters)" minlength="8" required class="{{ input_cls() }}">
     {{ btn("Create account") }}
   </form>
-  <p class="text-sm text-slate-500 mt-3">Already have an account? <a class="text-indigo-600" href="{{ url_for('auth.login') }}">Log in</a></p>
+  <p class="text-sm text-slate-500 mt-3">Already have an account? <a class="text-brand-600" href="{{ url_for('auth.login') }}">Log in</a></p>
   {% endcall %}
 </div>
 {% endblock %}

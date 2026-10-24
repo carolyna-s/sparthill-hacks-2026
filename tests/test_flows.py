@@ -44,11 +44,14 @@ def test_mentee_intake_flow(client):
 
     client.post("/apply", data={"action": "submit"})
     assert user.application.status == "draft"  # agreement not signed yet
+    assert client.get("/dashboard").headers["Location"].endswith("/agreements")  # locked until sign-up is done
 
-    client.post("/agreements/1/sign", data={"typed_name": "New Person"})
-    client.post("/apply", data={"action": "submit"})
+    assert client.post("/agreements/1/sign", data={"typed_name": "New Person"}).headers["Location"].endswith("/apply")
+    assert client.get("/dashboard").headers["Location"].endswith("/apply")
+    assert client.post("/apply", data={"action": "submit"}).headers["Location"].endswith("/dashboard")
     db.session.refresh(user.application)
     assert user.application.status == "submitted"  # free-response answers are optional
+    assert client.get("/dashboard").status_code == 200
 
 
 def test_profile_back_saves_without_requiring(client):

@@ -25,7 +25,7 @@
            {% if n == step %}aria-current="step"{% endif %}
            class="flex flex-col items-center gap-1 text-center {{ 'opacity-50 cursor-not-allowed' if not reachable }}">
           <span class="w-8 h-8 rounded-full grid place-items-center text-sm font-medium
-                       {{ 'bg-indigo-600 text-white' if n == step else 'bg-emerald-100 text-emerald-800' if done.get(n) else 'bg-slate-200 text-slate-600' }}">
+                       {{ 'bg-brand-600 text-white' if n == step else 'bg-emerald-100 text-emerald-800' if done.get(n) else 'bg-slate-200 text-slate-600' }}">
             {{ '✓' if done.get(n) and n != step else n }}</span>
           <span class="text-xs leading-tight {{ 'font-medium' if n == step else 'text-slate-600' }}">
             {{ ("What you bring" if mentor else "What you're looking for") if n == 3 else label }}{% if n <= 2 %} {{ req() }}{% endif %}</span>
@@ -87,7 +87,7 @@
           <span class="pr-2"><span class="sm:hidden">{{ day[:3] }}</span><span class="hidden sm:inline">{{ day }}</span></span>
           {% for period in periods %}
             {% set slot = day ~ ' - ' ~ period %}
-            <label class="border rounded py-1.5 text-center cursor-pointer text-transparent hover:bg-slate-50 has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-400">
+            <label class="border rounded py-1.5 text-center cursor-pointer text-transparent hover:bg-slate-50 has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400">
               <input type="checkbox" name="availability" value="{{ slot }}" class="sr-only" aria-label="{{ day }} {{ period }}" {{ 'checked' if slot in p.availability }}>✓
             </label>
           {% endfor %}
@@ -100,7 +100,7 @@
         <legend class="text-sm font-medium mb-2">How many mentees can you take on? {{ req() }}</legend>
         <div class="flex gap-2">
           {% for n in range(1, 6) %}
-            <label class="w-10 border rounded py-1.5 text-center text-sm cursor-pointer has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-indigo-400">
+            <label class="w-10 border rounded py-1.5 text-center text-sm cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400">
               <input type="radio" name="capacity" value="{{ n }}" class="sr-only" {{ 'checked' if n == p.capacity }}>{{ n }}
             </label>
           {% endfor %}
@@ -149,7 +149,7 @@
 
   {# Next comes first in the markup so pressing Enter goes forward, not back. #}
   <div class="flex flex-row-reverse justify-between items-center">
-    <button name="nav" value="next" class="text-sm rounded px-4 py-2 bg-indigo-600 text-white hover:bg-indigo-700">
+    <button name="nav" value="next" class="text-sm rounded px-4 py-2 bg-brand-600 text-white hover:bg-brand-700">
       {{ "Review and submit →" if step == steps|length else "Next →" }}</button>
     {% if step > 1 %}
       <button name="nav" value="back" formnovalidate class="text-sm rounded px-4 py-2 border bg-white hover:bg-slate-50">← Back</button>

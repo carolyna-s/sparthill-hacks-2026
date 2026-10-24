@@ -9,7 +9,7 @@
   {% for msg in thread %}
     {% set mine = msg.sender_id == current_user.id %}
     <div class="flex {{ 'justify-end' if mine }}">
-      <div class="max-w-[75%] rounded-lg px-3 py-2 text-sm {{ 'bg-indigo-600 text-white' if mine else 'bg-slate-100' }}">
+      <div class="max-w-[75%] rounded-lg px-3 py-2 text-sm {{ 'bg-brand-600 text-white' if mine else 'bg-slate-100' }}">
         <div class="whitespace-pre-line">{{ msg.body }}</div>
         <div class="text-[11px] opacity-70 mt-1">{{ msg.sender.name }} · {{ msg.sent_at.strftime('%b %d %H:%M') }}</div>
       </div>

@@ -4,7 +4,7 @@
 <h1 class="text-2xl font-semibold mb-3">Applicants</h1>
 <div class="flex gap-2 text-sm mb-5">
   {% for s in ['submitted', 'accepted', 'waitlisted', 'rejected'] %}
-    <a href="{{ url_for('staff.applications', status=s, role=role) }}" class="px-3 py-1 rounded {{ 'bg-indigo-600 text-white' if s == status else 'border bg-white' }}">{{ s }}</a>
+    <a href="{{ url_for('staff.applications', status=s, role=role) }}" class="px-3 py-1 rounded {{ 'bg-brand-600 text-white' if s == status else 'border bg-white' }}">{{ s }}</a>
   {% endfor %}
   <span class="mx-2 text-slate-300">|</span>
   {% for r in [None, 'mentee', 'mentor'] %}
@@ -16,7 +16,7 @@
   <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Role</th><th>Industry</th><th>Submitted</th></tr></thead>
   {% for a in rows %}
   <tr class="border-t">
-    <td class="py-2"><a class="text-indigo-600" href="{{ url_for('staff.application', app_id=a.id) }}">{{ a.user.name }}</a></td>
+    <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.application', app_id=a.id) }}">{{ a.user.name }}</a></td>
     <td>{{ a.user.role }}</td>
     <td>{{ a.user.profile.industry or '—' }}</td>
     <td>{{ a.submitted_at.strftime('%b %d') if a.submitted_at else '—' }}</td>

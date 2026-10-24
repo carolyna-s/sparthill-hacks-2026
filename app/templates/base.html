@@ -3,43 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Mentorship Platform{% endblock %}</title>
+  <title>{% block title %}Spartan Mentorship Program{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='logos/spartan.webp') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    // App-wide theme. `brand` is SJSU blue (#0055A2 at 600), `gold` is SJSU gold (#E5A823 at 400).
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+          colors: {
+            brand: {
+              50: '#eef5fc', 100: '#d9e8f7', 200: '#b3d1ef', 300: '#7fb2e3', 400: '#4a8fd2',
+              500: '#1f6fbd', 600: '#0055a2', 700: '#004585', 800: '#00376a', 900: '#002a52', 950: '#001a35',
+            },
+            gold: {
+              50: '#fdf8ea', 100: '#faedc8', 200: '#f5db91', 300: '#f0c75e', 400: '#e5a823',
+              500: '#c98f12', 600: '#a3720d', 700: '#7c560c',
+            },
+          },
+        },
+      },
+    };
+  </script>
   {% block head %}{% endblock %}
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen">
-  <nav class="border-b bg-white">
-    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6 text-sm">
-      <a href="/" class="font-semibold">Mentorship</a>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col antialiased">
+  <nav class="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center gap-6 text-sm">
+      <a href="/" class="flex items-center gap-3 shrink-0">
+        <img src="{{ url_for('static', filename='logos/spartan.webp') }}" alt="Spartan logo" class="h-9 w-auto">
+        <span class="font-bold text-base tracking-tight text-brand-900 hidden sm:inline">Spartan Mentorship Program</span>
+      </a>
       {% if current_user.is_authenticated %}
         {% if current_user.is_staff %}
-          <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-slate-900">Overview</a>
-          <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-slate-900">Applicants</a>
-          <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-slate-900">Matching</a>
-          <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-slate-900">Reports</a>
+          <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-brand-700">Overview</a>
+          <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-brand-700">Applicants</a>
+          <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-brand-700">Matching</a>
+          <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-brand-700">Reports</a>
         {% else %}
-          <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-slate-900">Dashboard</a>
-          <a href="{{ url_for('intake.profile') }}" class="text-slate-600 hover:text-slate-900">Profile</a>
-          <a href="{{ url_for('program.matches') }}" class="text-slate-600 hover:text-slate-900">Messages</a>
+          <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
+          <a href="{{ url_for('program.matches') }}" class="text-slate-600 hover:text-brand-700">Messages</a>
         {% endif %}
-        <a href="{{ url_for('program.events') }}" class="text-slate-600 hover:text-slate-900">Events</a>
-        <form method="post" action="{{ url_for('auth.logout') }}" class="ml-auto flex items-center gap-3">
-          <span class="text-slate-500">{{ current_user.name }} · {{ current_user.role }}</span>
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="text-slate-600 hover:text-slate-900">Log out</button>
-        </form>
+        <a href="{{ url_for('program.events') }}" class="text-slate-600 hover:text-brand-700">Events</a>
+        <details class="ml-auto relative group">
+          <summary class="list-none flex items-center gap-2 cursor-pointer rounded-full border border-slate-200 pl-3 pr-1 py-1 hover:border-brand-300 [&::-webkit-details-marker]:hidden">
+            <span class="font-medium text-slate-700">{{ current_user.name }}</span>
+            <span class="h-7 w-7 rounded-full bg-brand-600 text-white text-xs font-semibold grid place-items-center">{{ current_user.name[:1]|upper }}</span>
+          </summary>
+          <div class="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+            <p class="px-4 py-2 text-xs text-slate-500 capitalize border-b border-slate-100">{{ current_user.role }}</p>
+            {% if not current_user.is_staff %}
+              <a href="{{ url_for('intake.profile') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Profile</a>
+            {% endif %}
+            <form method="post" action="{{ url_for('auth.logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="w-full text-left px-4 py-2 text-slate-700 hover:bg-brand-50">Log out</button>
+            </form>
+          </div>
+        </details>
       {% else %}
-        <a href="{{ url_for('auth.login') }}" class="ml-auto text-slate-600 hover:text-slate-900">Log in</a>
+        <a href="{{ url_for('auth.login') }}" class="ml-auto font-medium text-slate-600 hover:text-brand-700">Log in</a>
       {% endif %}
     </div>
   </nav>
-  <main class="max-w-6xl mx-auto px-4 py-6">
+  <main class="flex-1 w-full {% block main_class %}max-w-6xl mx-auto px-4 py-6{% endblock %}">
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in msgs %}
-        <div class="mb-4 rounded px-4 py-2 text-sm {{ 'bg-red-50 text-red-800' if cat == 'error' else 'bg-emerald-50 text-emerald-800' }}">{{ msg }}</div>
+        <div class="mb-4 rounded-lg px-4 py-2 text-sm {{ 'bg-red-50 text-red-800' if cat == 'error' else 'bg-emerald-50 text-emerald-800' }}">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <footer class="bg-brand-900 text-brand-100">
+    <div class="max-w-6xl mx-auto px-4 py-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 text-sm">
+      <span class="uppercase tracking-wider text-xs font-semibold text-brand-200">Made possible by</span>
+      <div class="flex items-center gap-5">
+        <img src="{{ url_for('static', filename='logos/sjsu-wordmark.svg') }}" alt="San José State University" class="h-8 w-auto">
+        <span class="bg-white rounded-md px-3 py-1.5">
+          <img src="{{ url_for('static', filename='logos/ti.jpeg') }}" alt="Texas Instruments" class="h-6 w-auto">
+        </span>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

@@ -59,7 +59,7 @@
   {% for m in approved %}
   <tr class="border-t">
     <td class="py-2">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</td><td>{{ m.score }}</td>
-    <td class="text-right"><a class="text-indigo-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
+    <td class="text-right"><a class="text-brand-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
       <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='end') }}" class="inline">{{ csrf() }}{{ btn("End", "secondary") }}</form></td>
   </tr>
   {% else %}<tr><td class="text-slate-500">None yet.</td></tr>{% endfor %}

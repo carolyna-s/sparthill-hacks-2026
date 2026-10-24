@@ -51,6 +51,17 @@ def missing_fields(user: User, step: int | None = None) -> list[str]:
     return [label for s, ok, label in REQUIRED if step in (None, s) and not ok(user)]
 
 
+def signup_next_step(user: User) -> str | None:
+    """URL of the first unfinished sign-up step (profile, agreements, submit), or None when done."""
+    if missing_fields(user):
+        return url_for("intake.profile")
+    if unsigned_agreements(user):
+        return url_for("intake.agreements")
+    if user.application is None or user.application.status == "draft":
+        return url_for("intake.apply")
+    return None
+
+
 def canonical_industry(typed: str) -> str:
     """A suggestion's own spelling if the user typed one (any case), else what they typed."""
     typed = " ".join(typed.split())[:120]
@@ -212,6 +223,8 @@ def apply():
             app_row.status = "submitted"
             app_row.submitted_at = utcnow()
             flash("Application submitted. Staff will review it soon.", "ok")
+            db.session.commit()
+            return redirect(url_for("main.dashboard"))
         db.session.commit()
         return redirect(url_for("intake.apply"))
     db.session.commit()
@@ -241,4 +254,6 @@ def sign(agreement_id: int):
                                           typed_name=typed, ip_address=request.remote_addr))
         db.session.commit()
         flash(f"Signed “{agreement.title}”.", "ok")
+        if not unsigned_agreements(current_user):
+            return redirect(url_for("intake.apply"))
     return redirect(url_for("intake.agreements"))
