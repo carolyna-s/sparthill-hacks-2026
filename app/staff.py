@@ -10,7 +10,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from flask_login import current_user
 from sqlalchemy import func
 
-from . import matching, program
+from . import matching, notify, program
 from .audit import record_change
 from .auth import role_required
 from .extensions import db
@@ -318,6 +318,7 @@ def manual_override():
                   f"Manually matched {mentee.name} with {mentor.name}, bypassing matchmaker ranking.",
                   target_user_id=mentee.id)
     db.session.commit()
+    notify.notify_match_released(match)
     flash(f"Manual match created: {mentee.name} → {mentor.name}.", "ok")
     return redirect(url_for("staff.matching_page"))
 
@@ -386,6 +387,8 @@ def decide_match(match_id: int, decision: str):
     if decision == "approve":
         _release_match(m)
     db.session.commit()
+    if decision == "approve":
+        notify.notify_match_released(m)
     done = {"approve": f"Sent {pair} to the mentee for confirmation.", "end": f"Ended {pair}.",
             "reject": f"Rejected {pair}. They won't be proposed together again.",
             "reopen": f"Reopened {pair}."}[decision]

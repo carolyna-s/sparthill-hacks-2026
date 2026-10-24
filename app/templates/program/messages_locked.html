@@ -14,8 +14,8 @@
       <p class="font-semibold text-slate-900 mb-1">Messages aren't available yet</p>
       {% if pending and pending.status == 'released' %}
         {% set waiting_on_you = current_user.id == pending.mentee_id and not pending.mentee_confirmed_at %}
-        <p class="text-slate-600">You've been matched with {{ pending.other(current_user).name }}, but the match still needs to be
-          confirmed. Messaging opens as soon as it's approved.</p>
+        <p class="text-slate-600">You've been matched with {{ pending.other(current_user).name }}.
+          The match is awaiting confirmation, and messaging opens as soon as it's approved.</p>
         {% if waiting_on_you %}
           <a href="{{ url_for('main.match_confirmation', match_id=pending.id) }}"
              class="inline-flex mt-3 rounded-lg bg-brand-600 px-3 py-2 font-medium text-white hover:bg-brand-700">Confirm your match</a>

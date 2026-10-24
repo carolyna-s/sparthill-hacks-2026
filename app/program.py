@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import storage
+from . import notify, storage
 from .extensions import db
 from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback, Match, Meeting, Message,
                      Submission, User, utcnow)
@@ -199,7 +199,19 @@ def inbox():
         return _messages_locked()
     if len(rows) == 1:
         return redirect(url_for("program.messages", match_id=rows[0].id))
-    return redirect(url_for("main.dashboard"))  # several: pick one from the dashboard
+    # Several: list the threads.
+    threads = []
+    for m in rows:
+        last = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).first()
+        unread = (db.session.query(Message)
+                  .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
+                  .count())
+        threads.append((m, last, unread))
+    threads.sort(key=lambda t: t[1].sent_at if t[1] else datetime.min, reverse=True)
+    awaiting = (db.session.query(Match)
+                .filter(Match.status == "released",
+                        (Match.mentee_id == current_user.id) | (Match.mentor_id == current_user.id)).count())
+    return render_template("program/inbox.html", threads=threads, awaiting=awaiting)
 
 
 @bp.route("/messages/<int:match_id>", methods=["GET", "POST"])
@@ -216,6 +228,7 @@ def messages(match_id: int):
         if body:
             db.session.add(Message(match_id=m.id, sender_id=current_user.id, body=body))
             db.session.commit()
+            notify.email_unread_messages(m.id, current_user.id)
         return redirect(url_for("program.messages", match_id=m.id))
     if m.includes(current_user):  # staff viewing a thread doesn't mark it read
         (db.session.query(Message)
@@ -245,6 +258,7 @@ def schedule_meeting(match_id: int):
     db.session.add(Message(match_id=m.id, sender_id=current_user.id,
                            body=f"📅 Scheduled a meeting for {starts_at:%a, %b %d at %I:%M %p}." + (f" {note}" if note else "")))
     db.session.commit()
+    notify.email_unread_messages(m.id, current_user.id)
     flash("Meeting scheduled.", "ok")
     return redirect(url_for("program.messages", match_id=m.id))
 
@@ -259,5 +273,6 @@ def cancel_meeting(meeting_id: int):
                            body=f"Cancelled the meeting on {mt.starts_at:%a, %b %d at %I:%M %p}."))
     db.session.delete(mt)
     db.session.commit()
+    notify.email_unread_messages(mt.match_id, current_user.id)
     flash("Meeting cancelled.", "ok")
     return redirect(url_for("program.messages", match_id=mt.match_id))

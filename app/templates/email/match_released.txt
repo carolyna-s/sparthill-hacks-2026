@@ -1,0 +1,7 @@
+Please confirm your match with {{ other.name }}
+Hi {{ user.name }},
+
+You've been matched with {{ other.name }} as your {{ "mentor" if other.id == match.mentor_id else "mentee" }}. Please confirm or decline the match{% if match.confirm_by %} by {{ match.confirm_by.strftime("%b %d") }}{% endif %}:
+{{ base_url }}/matches/{{ match.id }}/confirmation
+
+Spartan Mentorship Program

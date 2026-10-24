@@ -134,7 +134,7 @@ def test_dashboard_application_edits_answers_without_changing_status(client):
     }
     assert user.profile.organization == "Updated Org"
     assert user.profile.availability == ["Monday - night"]
-    assert user.profile.languages == ["Spanish"]
+    assert user.profile.languages == ["English", "Spanish"]  # English is always included
     assert user.profile.industry == "Software Development"
     assert user.profile.interests == "Updated interests"
     assert user.profile.prefers_alumni
@@ -252,7 +252,7 @@ def test_profile_back_saves_without_requiring(client):
     resp = client.post("/profile/2", data={"nav": "back", "languages": ["Korean"]})
     assert resp.headers["Location"].endswith("/profile/1")
     user = db.session.query(User).filter_by(email="bp@x.org").one()
-    assert user.profile.languages == ["Korean"]
+    assert user.profile.languages == ["English", "Korean"]
 
 
 def test_register_requires_school(client):
@@ -271,10 +271,11 @@ def test_required_fields_block_next(client):
     user = db.session.query(User).filter_by(email="nm@x.org").one()
     assert user.profile.school == "CC"
 
+    resp = client.post("/profile/2", data={"languages": ["Spanish"]})
+    assert resp.headers["Location"].endswith("/profile/2")  # availability is required too
     resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"]})
-    assert resp.headers["Location"].endswith("/profile/2")  # language is required too
-    resp = client.post("/profile/2", data={"availability": ["Friday - afternoon"], "languages": ["English"]})
-    assert resp.headers["Location"].endswith("/profile/3")
+    assert resp.headers["Location"].endswith("/profile/3")  # no extra language needed: English is included
+    assert user.profile.languages == ["English"]
     client.post("/profile/3", data={})
     profile_page = client.get("/profile/4")
     assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
@@ -313,7 +314,7 @@ def test_messages_locked_until_match_is_approved(client):
     m.status = "released"
     db.session.commit()
     page = client.get(f"/messages/{m.id}").data
-    assert b"still needs to be" in page and b"Confirm your match" in page
+    assert b"awaiting" in page and b"Confirm your match" in page
 
     m.status = "approved"
     db.session.commit()
@@ -336,6 +337,8 @@ def test_review_match_and_message(client):
     assert match.status == "released"
 
     login(client, match.mentee.email)
+    inbox = client.get("/messages/")
+    assert inbox.status_code == 200 and b"awaiting confirmation" in inbox.data
     dashboard = client.get("/dashboard")
     assert b"Action required:" in dashboard.data
     assert b"Confirm or decline this match" in dashboard.data
@@ -344,6 +347,7 @@ def test_review_match_and_message(client):
     assert b"Confirm match" in notification.data and b"Decline match" in notification.data
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
     assert match.status == "approved" and match.mentee_confirmed_at is not None
+    assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
     assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
@@ -633,21 +637,19 @@ def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
     assert b"Mentee Withdrawn" in client.get("/staff/matching").data
 
 
-def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+def test_mentee_cannot_release_confirmed_mentor(client):
     login(client, "staff.admin@example.org")
     match = matching.propose_all()[0]
     client.post(f"/staff/matches/{match.id}/approve")
     login(client, match.mentee.email)
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    dashboard = client.get("/dashboard")
+    assert b"Release mentor" not in dashboard.data
     response = client.post(f"/matches/{match.id}/release")
 
-    assert response.status_code == 302
-    assert match.status == "withdrawn"
-    assert match.mentee_id in matching.unmatched_mentee_ids()
-    assert all(candidate.mentor_id != match.mentor_id
-               for candidate in matching.ranking_for(match.mentee_id, limit=None))
-    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
-    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+    assert response.status_code == 404
+    assert match.status == "approved"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
 
 
 def test_undo_auto_propose_and_cancel(client):
