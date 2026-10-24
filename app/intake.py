@@ -36,7 +36,7 @@ def require_profile_setup():
         "intake.apply": "Application",
         "intake.agreements": "Agreements",
         "program.inbox": "Messages",
-        "program.matches": "Messages",
+        "program.messages": "Messages",
         "program.modules": "Modules",
     }.get(request.endpoint, "this page")
     flash(f"Please complete onboarding to access {page}", "error")
