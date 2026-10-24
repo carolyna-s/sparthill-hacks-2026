@@ -365,6 +365,33 @@ def test_review_match_and_message(client):
     assert client.get(f"/messages/{outsider.id}").status_code == 404
 
 
+def test_unread_message_badge_and_live_thread_updates(client):
+    from app import matching
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    message = Message(match_id=match.id, sender_id=match.mentor_id, body="Unread first message")
+    db.session.add(message)
+    db.session.commit()
+
+    login(client, match.mentee.email)
+    dashboard = client.get("/dashboard")
+    assert b"1 unread message" in dashboard.data
+    assert client.get("/messages/unread-count").json == {"unread_count": 1}
+    thread_page = client.get(f"/messages/{match.id}")
+    assert b"Unread first message" in thread_page.data
+    assert message.read_at is not None
+
+    db.session.add(Message(match_id=match.id, sender_id=match.mentor_id, body="Arrived while open"))
+    db.session.commit()
+    update = client.get(f"/messages/{match.id}/updates")
+    assert update.status_code == 200
+    assert "Arrived while open" in update.json["messages_html"]
+    assert update.json["unread_count"] == 0
+    assert b"data-live-messages" in thread_page.data
+    assert b"data-message-updates-url" in thread_page.data
+
+
 def test_mentor_schedules_meeting_on_both_calendars(client):
     from app import matching
 
