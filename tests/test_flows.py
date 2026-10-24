@@ -376,12 +376,12 @@ def test_review_match_and_message(client):
     assert client.get("/messages/").headers["Location"].endswith(f"/messages/{match.id}")
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
-    assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
+    assert f"Messages with {match.mentor.name}".encode() in page.data
     assert b"Sent" in page.data and b"Seen" not in page.data
     login(client, match.mentor.email)
     page = client.get(f"/messages/{match.id}")
     assert b"Hi!" in page.data
-    assert f"Messages with your mentee, {match.mentee.name}".encode() in page.data
+    assert f"Messages with {match.mentee.name}".encode() in page.data
     assert b"Active now" in page.data  # the mentee was just here
     assert db.session.query(Message).one().read_at is not None
     login(client, match.mentee.email)
