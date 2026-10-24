@@ -4,7 +4,7 @@ aggregate reporting."""
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
@@ -15,8 +15,8 @@ from .audit import record_change
 from .auth import role_required
 from .extensions import db
 from .intake import Personality_Questions_Data, missing_fields
-from .models import (Application, Attendance, Event, Feedback, Match, MatchExclusion, MatchFeedback,
-                     Message, Submission, User, utcnow)
+from .models import (Application, Attendance, Cohort, Event, Feedback, Match, MatchExclusion,
+                     MatchFeedback, MatchOverrideRequest, Message, Submission, User, utcnow)
 
 bp = Blueprint("staff", __name__, url_prefix="/staff")
 
@@ -29,6 +29,9 @@ DENY_REASONS = {
     "mentor_overloaded": "Mentor is overloaded",
     "conflict_of_interest": "Conflict of interest",
     "other": "Other",
+    "mentee_rejection": "Mentee Rejection",
+    "mentee_withdrawn": "Mentee Withdrawn",
+    "mentor_rejection": "Mentor Rejection",
 }
 
 
@@ -45,7 +48,8 @@ def _reason_labels():
 
 def denials_for(match_ids) -> dict[int, list[MatchFeedback]]:
     rows = (db.session.query(MatchFeedback)
-            .filter(MatchFeedback.kind == "deny", MatchFeedback.match_id.in_(list(match_ids)))
+            .filter(MatchFeedback.kind.in_(("deny", "withdraw")),
+                    MatchFeedback.match_id.in_(list(match_ids)))
             .order_by(MatchFeedback.created_at))
     out: dict[int, list[MatchFeedback]] = {}
     for f in rows:
@@ -65,13 +69,50 @@ def overview():
 
 @bp.get("/applications")
 def applications():
-    status = request.args.get("status", "submitted")
-    role = request.args.get("role")
-    q = db.session.query(Application).join(User, User.id == Application.user_id).filter(Application.status == status)
-    if role:
-        q = q.filter(User.role == role)
-    return render_template("staff/applications.html", rows=q.order_by(Application.submitted_at).all(),
-                           status=status, role=role)
+    status = request.args.get("status", "pending")
+    if status not in ("pending", "all"):
+        status = "pending" if status == "submitted" else "all"
+    q = db.session.query(User).filter(User.role.in_(("mentee", "mentor")))
+    if status == "pending":
+        q = q.join(Application, Application.user_id == User.id).filter(Application.status == "submitted")
+    users = q.order_by(User.name).all()
+    rows = [dashboard_for(user) for user in users]
+    events = db.session.query(Event).filter(Event.starts_at <= utcnow()).all()
+    attendance = {
+        (user_id, event_id)
+        for user_id, event_id in db.session.query(Attendance.user_id, Attendance.event_id)
+        .filter(Attendance.user_id.in_([user.id for user in users]))
+    } if users else set()
+    for row in rows:
+        user = row["user"]
+        eligible_events = [event for event in events if event.starts_at >= user.created_at]
+        attended_count = sum((user.id, event.id) in attendance for event in eligible_events)
+        row["attendance_rate"] = (
+            f"{attended_count / len(eligible_events) * 100:.0f}%" if eligible_events else "N/A"
+        )
+    return render_template(
+        "staff/applications.html", rows=rows, status=status,
+        pending_count=db.session.query(Application).filter_by(status="submitted").count(),
+        q=request.args.get("q", "").strip(),
+    )
+
+
+@bp.post("/applications/quick-accept")
+def quick_accept_applications():
+    pending = db.session.query(Application).filter_by(status="submitted").all()
+    if not pending:
+        flash("There are no pending applications to accept.", "error")
+        return redirect(url_for("staff.applications", status="pending"))
+    now = utcnow()
+    for application in pending:
+        application.status = "accepted"
+        application.reviewed_by_id = current_user.id
+        application.reviewed_at = now
+    record_change("applications_bulk_accepted",
+                  f"Accepted all {len(pending)} applications that were pending approval.")
+    db.session.commit()
+    flash(f"Accepted {len(pending)} pending application(s).", "ok")
+    return redirect(url_for("staff.applications", status="pending"))
 
 
 @bp.route("/applications/<int:app_id>", methods=["GET", "POST"])
@@ -90,7 +131,7 @@ def application(app_id: int):
         db.session.commit()
         _offer_undo(f"{a.user.name}: {decision}.", url_for("staff.undo_application", app_id=a.id),
                     status=before)
-        return redirect(url_for("staff.applications", status=before))
+        return redirect(url_for("staff.applications", status="pending" if before == "submitted" else "all"))
     return render_template("staff/application.html", a=a,
                            Personality_Questions_Data=Personality_Questions_Data[a.user.role])
 
@@ -104,7 +145,7 @@ def undo_application(app_id: int):
         abort(400)
     if status != "accepted" and a.status == "accepted" and db.session.query(Match).filter(
             (Match.mentee_id == a.user_id) | (Match.mentor_id == a.user_id),
-            Match.status.in_(("proposed", "approved"))).first():
+            Match.status.in_(("proposed", "released", "approved"))).first():
         flash(f"{a.user.name} is already in a match. Cancel or end it before undoing the acceptance.", "error")
     else:
         previous_status = a.status
@@ -126,17 +167,13 @@ def dashboard_for(user: User) -> dict:
                .order_by(Match.proposed_at.desc()).all())
     return {"user": user, "application": user.application, "missing": missing_fields(user),
             "unsigned": program.unsigned_agreements(user), "matches": matches,
-            "active": [m for m in matches if m.status in ("proposed", "approved")],
+            "active": [m for m in matches if m.status in ("proposed", "released", "approved")],
             "todo": program.todo_for(user)}
 
 
 @bp.get("/people")
 def people():
-    role = request.args.get("role") if request.args.get("role") in ("mentee", "mentor") else None
-    q = request.args.get("q", "").strip()
-    query = db.session.query(User).filter(User.role.in_((role,) if role else ("mentee", "mentor")))
-    rows = [dashboard_for(u) for u in query.order_by(User.role, User.name)]
-    return render_template("staff/people.html", rows=rows, role=role, q=q)
+    return redirect(url_for("staff.applications", status="all", **request.args))
 
 
 @bp.get("/people/<int:user_id>")
@@ -170,13 +207,32 @@ def matching_page():
     unmatched = (db.session.query(User).filter(User.id.in_(matching.unmatched_mentee_ids()))
                  .order_by(User.name).all())
     rankings = {u.id: matching.ranking_for(u.id) for u in unmatched}
-    mentors = {u.id: u for u in db.session.query(User).filter_by(role="mentor")}
-    proposed = db.session.query(Match).filter_by(status="proposed").order_by(Match.score.desc()).all()
+    accepted_mentors = matching.accepted_profiles("mentor")
+    mentors = {}
+    if accepted_mentors:
+        mentors = {u.id: u for u in db.session.query(User).filter(User.id.in_(accepted_mentors))}
+    proposed = (db.session.query(Match).filter_by(status="proposed")
+                .order_by(Match.score.desc(), Match.id.asc()).all())
+    awaiting_confirmation = (db.session.query(Match).filter_by(status="released")
+                             .order_by(Match.released_at.desc()).all())
     approved = db.session.query(Match).filter_by(status="approved").order_by(Match.decided_at.desc()).all()
-    rejected = (db.session.query(MatchFeedback).filter_by(kind="deny")
+    rejected = (db.session.query(MatchFeedback).filter(MatchFeedback.kind.in_(("deny", "withdraw")))
                 .order_by(MatchFeedback.created_at.desc()).limit(20).all())
+    mentor_loads = dict(
+        db.session.query(Match.mentor_id, func.count(Match.id))
+        .filter(Match.status.in_(("proposed", "released", "approved")))
+        .group_by(Match.mentor_id).all()
+    )
+    override_mentee_id = request.args.get("override_mentee", type=int)
     return render_template("staff/matching.html", unmatched=unmatched, rankings=rankings, mentors=mentors,
-                           proposed=proposed, approved=approved, rejected=rejected)
+                           proposed=proposed, awaiting_confirmation=awaiting_confirmation,
+                           approved=approved, rejected=rejected,
+                           mentor_loads=mentor_loads, mentor_capacity=matching.MENTEES_PER_MENTOR,
+                           open_mentor_count=sum(
+                               mentor_loads.get(mentor_id, 0) < matching.MENTEES_PER_MENTOR
+                               for mentor_id in mentors
+                           ),
+                           override_mentee_id=override_mentee_id)
 
 
 @bp.get("/matches/<int:match_id>")
@@ -187,11 +243,40 @@ def match_review(match_id: int):
     action = request.args.get("action") if m.status == "proposed" else None
     mentees_of_mentor = (db.session.query(Match)
                          .filter(Match.mentor_id == m.mentor_id, Match.id != m.id,
-                                 Match.status.in_(("proposed", "approved"))).all())
+                                 Match.status.in_(("proposed", "released", "approved"))).all())
     return render_template("staff/match.html", m=m,
                            action=action if action in ("approve", "reject") else None,
+                           queue=request.args.get("queue") == "1",
                            questions=Personality_Questions_Data, mentees_of_mentor=mentees_of_mentor,
                            denials=denials_for([m.id]).get(m.id, []))
+
+
+def _next_queued_proposal(match: Match) -> Match | None:
+    """Find the next pending row in the same stable score order used by Matching."""
+    later = (db.session.query(Match).filter_by(status="proposed")
+             .filter((Match.score < match.score)
+                     | ((Match.score == match.score) & (Match.id > match.id)))
+             .order_by(Match.score.desc(), Match.id.asc()).first())
+    if later:
+        return later
+    return (db.session.query(Match).filter_by(status="proposed")
+            .order_by(Match.score.desc(), Match.id.asc()).first())
+
+
+def _queue_destination(match: Match) -> str:
+    following = _next_queued_proposal(match)
+    if following:
+        return url_for("staff.match_review", match_id=following.id, queue=1)
+    flash("All proposed matches have been reviewed.", "ok")
+    return url_for("staff.matching_page")
+
+
+def _release_match(match: Match) -> None:
+    now = utcnow()
+    cohort = db.session.get(Cohort, match.cohort_id) if match.cohort_id else None
+    match.status = "released"
+    match.released_at = now
+    match.confirm_by = now + timedelta(days=cohort.confirm_days if cohort else 7)
 
 
 @bp.post("/matching/propose-all")
@@ -239,9 +324,79 @@ def propose_one():
     return redirect(url_for("staff.matching_page"))
 
 
+@bp.post("/matching/override/start")
+def start_manual_override():
+    mentee_id = request.form.get("mentee_id", type=int)
+    if mentee_id not in matching.unmatched_mentee_ids():
+        flash("That mentee is no longer eligible for a manual match.", "error")
+        return redirect(url_for("staff.matching_page"))
+    return redirect(url_for("staff.matching_page", override_mentee=mentee_id))
+
+
+@bp.post("/matching/override")
+def manual_override():
+    mentee_id = request.form.get("mentee_id", type=int)
+    mentor_id = request.form.get("mentor_id", type=int)
+    if mentee_id is None or mentor_id is None:
+        abort(400)
+    if mentee_id not in matching.unmatched_mentee_ids():
+        flash("That mentee is no longer unmatched and cannot be overridden.", "error")
+        return redirect(url_for("staff.matching_page"))
+
+    accepted_mentors = matching.accepted_profiles("mentor")
+    mentor = db.session.get(User, mentor_id)
+    if not mentor or mentor.id not in accepted_mentors:
+        flash("Choose an active mentor with an accepted application.", "error")
+        return redirect(url_for("staff.matching_page"))
+    mentor_load = (db.session.query(Match).filter_by(mentor_id=mentor.id)
+                   .filter(Match.status.in_(("proposed", "released", "approved"))).count())
+    if mentor_load >= matching.MENTEES_PER_MENTOR:
+        existing_request = (db.session.query(MatchOverrideRequest)
+                            .filter_by(mentee_id=mentee_id, status="pending").first())
+        if existing_request:
+            flash("An admin approval ticket is already pending for this mentee.", "error")
+            return redirect(url_for("staff.matching_page"))
+        override_request = MatchOverrideRequest(
+            mentee_id=mentee_id,
+            mentor_id=mentor.id,
+            requested_by_id=current_user.id,
+        )
+        db.session.add(override_request)
+        record_change(
+            "manual_match_override_requested",
+            f"Requested backend approval to match {db.session.get(User, mentee_id).name} "
+            f"with at-capacity mentor {mentor.name} ({mentor_load}/{matching.MENTEES_PER_MENTOR}).",
+            target_user_id=mentee_id,
+        )
+        db.session.commit()
+        flash(f"{mentor.name} is at capacity ({mentor_load}/{matching.MENTEES_PER_MENTOR}). "
+              "An override request was sent to the backend admin.", "ok")
+        return redirect(url_for("staff.matching_page"))
+
+    mentee = db.session.get(User, mentee_id)
+    match = Match(
+        mentee_id=mentee.id,
+        mentor_id=mentor.id,
+        status="released",
+        score=0,
+        score_breakdown={"manual_override": True},
+        rematch_round=matching.rematch_round(mentee.id),
+        decided_by_id=current_user.id,
+        decided_at=utcnow(),
+    )
+    _release_match(match)
+    db.session.add(match)
+    record_change("manual_match_override",
+                  f"Manually matched {mentee.name} with {mentor.name}, bypassing matchmaker ranking.",
+                  target_user_id=mentee.id)
+    db.session.commit()
+    flash(f"Manual match created: {mentee.name} → {mentor.name}.", "ok")
+    return redirect(url_for("staff.matching_page"))
+
+
 # decision: (status it applies to, status it leads to). The last two undo reject and end.
-# Approval is final: the pair sees the match right away, so the way out is ending it.
-DECISIONS = {"approve": ("proposed", "approved"), "reject": ("proposed", "rejected"),
+# Staff approval releases the match to the mentee for confirmation.
+DECISIONS = {"approve": ("proposed", "released"), "reject": ("proposed", "rejected"),
              "end": ("approved", "ended"),
              "unreject": ("rejected", "proposed"), "reopen": ("ended", "approved")}
 UNDO = {"reject": "unreject", "end": "reopen"}
@@ -252,7 +407,7 @@ def _undo_blocker(m: Match, decision: str) -> str | None:
     if decision in ("unreject", "reopen"):
         other = (db.session.query(Match)
                  .filter(Match.mentee_id == m.mentee_id, Match.id != m.id,
-                         Match.status.in_(("proposed", "approved"))).first())
+                         Match.status.in_(("proposed", "released", "approved"))).first())
         if other:
             return (f"{m.mentee.name} already has another match ({other.mentor.name}, {other.status}). "
                     "Cancel or end that one first.")
@@ -290,7 +445,8 @@ def decide_match(match_id: int, decision: str):
         reason, comment = request.form.get("reason"), request.form.get("comment", "").strip()
         if reason not in MatchFeedback.REASONS["deny"] or (reason == "other" and not comment):
             flash("To reject a match, pick a reason" + (" and describe it." if reason == "other" else "."), "error")
-            return redirect(url_for("staff.match_review", match_id=m.id, action="reject"))
+            return redirect(url_for("staff.match_review", match_id=m.id, action="reject",
+                                    **({"queue": 1} if request.form.get("queue") == "1" else {})))
         feedback = MatchFeedback(match_id=m.id, author_id=current_user.id, kind="deny",
                                  reason=reason, comment=comment)
         db.session.add(feedback)
@@ -299,15 +455,23 @@ def decide_match(match_id: int, decision: str):
             db.session.add(MatchExclusion(mentee_id=m.mentee_id, mentor_id=m.mentor_id,
                                           cohort_id=m.cohort_id, feedback_id=feedback.id))
     m.status, m.decided_by_id, m.decided_at = DECISIONS[decision][1], current_user.id, utcnow()
+    if decision == "approve":
+        _release_match(m)
     db.session.commit()
-    done = {"approve": f"Approved {pair}.", "end": f"Ended {pair}.",
+    done = {"approve": f"Sent {pair} to the mentee for confirmation.", "end": f"Ended {pair}.",
             "reject": f"Rejected {pair}. They won't be proposed together again.",
             "reopen": f"Reopened {pair}."}[decision]
+    queued_review = request.form.get("queue") == "1" and decision in ("approve", "reject")
+    if queued_review:
+        destination = _queue_destination(m)
+    else:
+        destination = back
     if decision in UNDO:
-        _offer_undo(done, url_for("staff.decide_match", match_id=m.id, decision=UNDO[decision]), next=back)
+        _offer_undo(done, url_for("staff.decide_match", match_id=m.id, decision=UNDO[decision]),
+                    next=destination)
     else:
         flash(done, "ok")
-    return redirect(back)
+    return redirect(destination)
 
 
 # --- modules -----------------------------------------------------------------------
@@ -368,3 +532,40 @@ def report_data() -> dict:
 @bp.get("/reports")
 def reports():
     return render_template("staff/reports.html", report=report_data())
+
+
+@bp.get("/reports/modules/<int:event_id>")
+def event_attendance(event_id: int):
+    event = db.get_or_404(Event, event_id)
+    participants = (db.session.query(User)
+                    .filter(User.role.in_(("mentee", "mentor")), User.created_at <= event.starts_at)
+                    .order_by(User.name).all())
+    participant_ids = [user.id for user in participants]
+    attendance_by_user = dict(
+        db.session.query(Attendance.user_id, Attendance.checked_in_at)
+        .filter(Attendance.event_id == event.id, Attendance.user_id.in_(participant_ids)).all()
+    ) if participant_ids else {}
+    submission_by_user = {
+        (user_id, kind)
+        for user_id, kind in db.session.query(Submission.user_id, Submission.kind)
+        .filter(Submission.event_id == event.id, Submission.user_id.in_(participant_ids))
+    }
+    if not participant_ids:
+        submission_by_user = set()
+    rating = db.session.query(func.avg(Feedback.rating)).filter_by(event_id=event.id).scalar()
+    total = len(participants)
+    attended_count = len(attendance_by_user)
+    return render_template(
+        "staff/event_attendance.html",
+        event=event,
+        attended=[user for user in participants if user.id in attendance_by_user],
+        absent=[user for user in participants if user.id not in attendance_by_user],
+        attendance_by_user=attendance_by_user,
+        submission_by_user=submission_by_user,
+        participant_count=total,
+        attended_count=attended_count,
+        attendance_rate=attended_count / total * 100 if total else None,
+        prework_count=sum((user.id, "prework") in submission_by_user for user in participants),
+        postwork_count=sum((user.id, "postwork") in submission_by_user for user in participants),
+        average_rating=rating,
+    )

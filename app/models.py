@@ -66,7 +66,8 @@ class AuditLog(db.Model):
     """A staff/admin change record. Matching records are intentionally kept out of this log."""
 
     id = db.Column(db.Integer, primary_key=True)
-    actor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)
+    actor_name = db.Column(db.String(120))
     actor_role = db.Column(db.String(10), nullable=False)
     target_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     action = db.Column(db.String(80), nullable=False)
@@ -205,16 +206,17 @@ class AgreementSignature(db.Model):
 # --- matching --------------------------------------------------------------
 
 class Match(db.Model):
-    """A proposed or approved pair.
+    """A proposed, pending-confirmation, or active pair.
 
-    proposed -> approved | rejected (staff deny)
-    approved -> withdrawn (mentee withdraws after release) | ended
-    Approval is final (end the match instead). Staff can undo reject and end, and cancel (delete) a proposal.
-    Ended and withdrawn pairs aren't proposed again.
+    proposed -> released | rejected (staff decision)
+    released -> approved | rejected (participant response)
+    approved -> withdrawn (mentee releases the mentor) | ended
+    Capacity overrides require both participants to confirm. Staff can undo rejection or end,
+    and cancel (delete) a proposal. Ended and withdrawn pairs aren't proposed again.
     Scores are 0-100: final = (alpha*structured + (1-alpha)*semantic) * context_multiplier.
     """
 
-    STATUSES = ("proposed", "approved", "rejected", "withdrawn", "ended")
+    STATUSES = ("proposed", "released", "approved", "rejected", "withdrawn", "ended")
 
     id = db.Column(db.Integer, primary_key=True)
     mentee_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
@@ -232,10 +234,11 @@ class Match(db.Model):
     proposed_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     decided_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     decided_at = db.Column(db.DateTime)
-    # After release: the mentee confirms they're still in, or withdraws.
+    # After release, the mentee confirms. Capacity overrides also require mentor confirmation.
     released_at = db.Column(db.DateTime)
     confirm_by = db.Column(db.DateTime)
     mentee_confirmed_at = db.Column(db.DateTime)
+    mentor_confirmed_at = db.Column(db.DateTime)
     withdrawn_at = db.Column(db.DateTime)
 
     mentee = db.relationship("User", foreign_keys=[mentee_id])
@@ -246,6 +249,26 @@ class Match(db.Model):
 
     def includes(self, user: User) -> bool:
         return user.id in (self.mentee_id, self.mentor_id)
+
+
+class MatchOverrideRequest(db.Model):
+    """A staff request to place a mentee with a mentor who has no open capacity."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    mentee_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    mentor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    requested_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    status = db.Column(db.String(10), default="pending", server_default="pending", nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    decided_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    decided_at = db.Column(db.DateTime)
+    match_id = db.Column(db.Integer, db.ForeignKey("match.id"))
+
+    mentee = db.relationship("User", foreign_keys=[mentee_id])
+    mentor = db.relationship("User", foreign_keys=[mentor_id])
+    requested_by = db.relationship("User", foreign_keys=[requested_by_id])
+    decided_by = db.relationship("User", foreign_keys=[decided_by_id])
+    match = db.relationship("Match")
 
 
 # --- program tools ---------------------------------------------------------
@@ -450,8 +473,9 @@ class MatchFeedback(db.Model):
 
     REASONS = {
         "deny": ("interests_or_pathway", "experience_gap", "language_or_communication", "fit_concern",
-                 "mentor_overloaded", "conflict_of_interest", "other"),
-        "withdraw": ("no_time", "not_a_good_fit", "found_other_mentorship", "program_not_for_me", "other"),
+                 "mentor_overloaded", "conflict_of_interest", "other", "mentee_rejection", "mentor_rejection"),
+        "withdraw": ("no_time", "not_a_good_fit", "found_other_mentorship", "program_not_for_me",
+                     "other", "mentee_withdrawn"),
     }
 
     id = db.Column(db.Integer, primary_key=True)

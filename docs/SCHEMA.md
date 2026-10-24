@@ -75,14 +75,14 @@ embedded), `embedding_model`, `updated_at`.
 | Column | Notes |
 | --- | --- |
 | `mentee_id`, `mentor_id`, `cohort_id` | |
-| `status` | `proposed` → `approved` \| `rejected` (staff deny); `approved` → `withdrawn` \| `ended`. Approval is final; staff can undo reject / end, and ended / withdrawn pairs aren't re-proposed; cancelling a proposal deletes the row |
+| `status` | `proposed` → `released` \| `rejected` (staff decision); `released` → `approved` (mentee confirms; capacity overrides also need mentor confirmation) \| `rejected` (a participant declines) \| `withdrawn` (mentee leaves program); `approved` → `withdrawn` \| `ended`. Only confirmed matches are active; rejected/withdrawn pairs aren't re-proposed |
 | `score` | final 0–100 shown to staff |
 | `structured_score`, `semantic_score`, `context_multiplier` | stage 2, stage 3, stage 4 (docs/PLAN.md §4) |
 | `score_breakdown` | per-feature similarities and shared values |
 | `ai_review` | `{note, flags, confidence, feedback_ids_used}` |
 | `config_id` | the `matching_config` used |
 | `rematch_round` | 1 for the first proposal, +1 for each auto re-match after a deny |
-| `proposed_at`, `decided_by_id`, `decided_at` | staff decision || `released_at`, `confirm_by`, `mentee_confirmed_at`, `withdrawn_at` | post-release confirmation |
+| `proposed_at`, `decided_by_id`, `decided_at` | staff decision || `released_at`, `confirm_by`, `mentee_confirmed_at`, `mentor_confirmed_at`, `withdrawn_at` | participant confirmation; mentor confirmation is required only for admin-approved capacity overrides |
 
 **matching_config**: versioned weights. `weights` (`{feature: weight}`), `settings`
 (`alpha`, `experience_gap`, `load_penalty`, `context_range`, `llm_top_k`), `is_active` (one
@@ -94,7 +94,13 @@ row), `source` (`manual` | `ai`), `notes`, `created_by_id`, `created_at`.
 `decided_at`, `applied_config_id`.
 
 **match_exclusion**: a pair never to propose again. `mentee_id`, `mentor_id`, `cohort_id` (null =
-all cohorts), `feedback_id`. Unique per (mentee, mentor, cohort).
+all cohorts), `feedback_id`. Unique per (mentee, mentor, cohort). A mentee declining or releasing
+a mentor creates an exclusion and returns the mentee to the pool.
+
+**match_override_request**: staff requests for a backend admin to approve/deny assignment to an
+at-capacity mentor. `mentee_id`, `mentor_id`, `requested_by_id`, `status` (`pending` | `approved` |
+`denied`), decision actor/time, and the released match id. Approval permits the capacity override
+but still requires the mentee to confirm the match.
 
 ## Feedback loop
 

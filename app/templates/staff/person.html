@@ -3,7 +3,7 @@
 {% from "staff/_match.html" import profile_facts, denial with context %}
 {% set u = d.user %}
 {% block content %}
-<a href="{{ url_for('staff.people') }}" class="text-sm text-slate-500">← People</a>
+<a href="{{ url_for('staff.applications', status='all') }}" class="text-sm text-slate-500">← Applicants</a>
 <h1 class="text-2xl font-semibold mt-1 mb-1">{{ u.name }}</h1>
 <p class="text-sm text-slate-500 mb-5">{{ u.role }} · {{ u.email }} · joined {{ u.created_at.strftime('%b %d, %Y') }}</p>
 <div class="grid md:grid-cols-2 gap-5">

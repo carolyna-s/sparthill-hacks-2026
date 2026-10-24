@@ -5,8 +5,8 @@ from datetime import timedelta
 
 from app import matching
 from app.extensions import db
-from app.models import (Application, Attendance, AuditLog, Event, Match, MatchExclusion, MatchFeedback, Meeting,
-                        Message, ReminderLog, Submission, User, utcnow)
+from app.models import (Application, Attendance, AuditLog, Event, Feedback, Match, MatchExclusion, MatchFeedback,
+                        MatchOverrideRequest, Meeting, Message, ReminderLog, Submission, User, utcnow)
 from app.reminders import send_due_reminders
 
 from .conftest import login
@@ -284,9 +284,13 @@ def test_staff_pages_are_staff_only(client):
     login(client, "jordan.kim@example.org")
     assert client.get("/staff/").status_code == 403
     login(client, "staff.admin@example.org")
-    for path in ["/staff/", "/staff/applications", "/staff/people", "/staff/matching", "/staff/reports",
+    for path in ["/staff/", "/staff/applications", "/staff/matching", "/staff/reports",
                  "/staff/modules/new"]:
         assert client.get(path).status_code == 200, path
+    assert client.get("/staff/people").status_code == 302
+    overview = client.get("/staff/").data
+    assert b"Dashboard" in overview
+    assert b"Staff Overview" in overview
 
 
 def test_review_match_and_message(client):
@@ -302,9 +306,17 @@ def test_review_match_and_message(client):
     for m in proposed:
         client.post(f"/staff/matches/{m.id}/approve")
     match = proposed[0]
-    assert match.status == "approved"
+    assert match.status == "released"
 
     login(client, match.mentee.email)
+    dashboard = client.get("/dashboard")
+    assert b"Action required:" in dashboard.data
+    assert b"Confirm or decline this match" in dashboard.data
+    notification = client.get(f"/matches/{match.id}/confirmation")
+    assert notification.status_code == 200
+    assert b"Confirm match" in notification.data and b"Decline match" in notification.data
+    client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    assert match.status == "approved" and match.mentee_confirmed_at is not None
     client.post(f"/messages/{match.id}", data={"body": "Hi!"})
     page = client.get(f"/messages/{match.id}")
     assert f"Messages with your mentor, {match.mentor.name}".encode() in page.data
@@ -382,6 +394,216 @@ def test_reject_match_needs_reason_and_is_never_reproposed(client):
     assert b"goals don&#39;t line up" in client.get(f"/staff/people/{m.mentee_id}").data
 
 
+def test_match_review_queue_advances_until_all_proposals_are_done(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    ordered = (db.session.query(Match).filter_by(status="proposed")
+               .order_by(Match.score.desc(), Match.id.asc()).all())
+    first = ordered[0]
+    review = client.get(f"/staff/matches/{first.id}?action=approve&queue=1")
+    assert b"Exit review queue" in review.data
+    assert b'name="queue" value="1"' in review.data
+
+    response = client.post(f"/staff/matches/{first.id}/approve", data={"queue": "1"})
+    remaining = ordered[1:]
+    if remaining:
+        assert response.location.endswith(f"/staff/matches/{remaining[0].id}?queue=1")
+    else:
+        assert response.location.endswith("/staff/matching")
+
+    for match in remaining:
+        response = client.post(
+            f"/staff/matches/{match.id}/reject",
+            data={"queue": "1", "reason": "experience_gap"},
+        )
+    assert response.location.endswith("/staff/matching")
+    assert b"All proposed matches have been reviewed." in client.get(response.location).data
+    assert db.session.query(Match).filter_by(status="proposed").count() == 0
+
+
+def test_staff_manual_match_override_requires_capacity_and_logs_change(client):
+    login(client, "staff.admin@example.org")
+    mentee_id = min(matching.unmatched_mentee_ids())
+    mentor_id = next(iter(matching.accepted_profiles("mentor")))
+
+    start = client.post("/staff/matching/override/start", data={"mentee_id": mentee_id})
+    assert start.location.endswith(f"/staff/matching?override_mentee={mentee_id}")
+    page = client.get(start.location)
+    assert b"Override matchmaker" in page.data
+    assert b"Mentor currently has " in page.data
+
+    response = client.post(
+        "/staff/matching/override",
+        data={"mentee_id": mentee_id, "mentor_id": mentor_id},
+    )
+    assert response.location.endswith("/staff/matching")
+    manual_match = db.session.query(Match).filter_by(mentee_id=mentee_id, mentor_id=mentor_id).one()
+    assert manual_match.status == "released"
+    assert manual_match.score_breakdown == {"manual_override": True}
+    assert db.session.query(AuditLog).filter_by(action="manual_match_override").count() == 1
+
+    another_mentee_id = min(matching.unmatched_mentee_ids())
+    ticket_response = client.post(
+        "/staff/matching/override",
+        data={"mentee_id": another_mentee_id, "mentor_id": mentor_id},
+        follow_redirects=True,
+    )
+    assert b"sent to the backend admin" in ticket_response.data
+    assert db.session.query(Match).filter_by(mentee_id=another_mentee_id, mentor_id=mentor_id).count() == 0
+    ticket = db.session.query(MatchOverrideRequest).filter_by(mentee_id=another_mentee_id).one()
+    assert ticket.status == "pending"
+    assert another_mentee_id not in matching.unmatched_mentee_ids()
+
+    login(client, "backend.admin@example.org")
+    admin_page = client.get("/admin/")
+    assert b"Capacity override requests" in admin_page.data
+    assert b"Approve" in admin_page.data and b"Deny" in admin_page.data
+    client.post(f"/admin/matching-override-requests/{ticket.id}/approve")
+    assert ticket.status == "approved"
+    over_capacity_match = db.session.get(Match, ticket.match_id)
+    assert over_capacity_match.status == "released"
+    assert over_capacity_match.score_breakdown["admin_approved_over_capacity"] is True
+    assert over_capacity_match.mentee_confirmed_at is None
+    assert db.session.query(AuditLog).filter_by(
+        action="manual_match_override_approved", target_user_id=another_mentee_id
+    ).count() == 1
+
+    login(client, over_capacity_match.mentee.email)
+    mentee_dashboard = client.get("/dashboard")
+    assert b"Your match" in mentee_dashboard.data
+    assert b"Action required:" in mentee_dashboard.data
+    assert b"Open match notification" in mentee_dashboard.data
+    client.post(f"/matches/{over_capacity_match.id}/confirmation", data={"response": "confirm"})
+    assert over_capacity_match.status == "released"
+    assert over_capacity_match.mentee_confirmed_at is not None
+    assert b"Waiting for the mentor" in client.get("/dashboard").data
+
+    login(client, over_capacity_match.mentor.email)
+    mentor_dashboard = client.get("/dashboard")
+    assert b"Your mentees" in mentor_dashboard.data
+    assert b"confirm or deny this over-capacity match" in mentor_dashboard.data
+    assert b"Open match notification" in mentor_dashboard.data
+    assert client.get(f"/matches/{over_capacity_match.id}/confirmation").status_code == 200
+    client.post(f"/matches/{over_capacity_match.id}/confirmation", data={"response": "confirm"})
+    assert over_capacity_match.status == "approved"
+    assert over_capacity_match.mentor_confirmed_at is not None
+
+    denied_mentee_id = min(matching.unmatched_mentee_ids())
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/override", data={
+        "mentee_id": denied_mentee_id, "mentor_id": mentor_id,
+    })
+    denied_ticket = db.session.query(MatchOverrideRequest).filter_by(
+        mentee_id=denied_mentee_id, status="pending"
+    ).one()
+    login(client, "backend.admin@example.org")
+    client.post(f"/admin/matching-override-requests/{denied_ticket.id}/deny")
+    assert denied_ticket.status == "denied"
+    assert denied_mentee_id in matching.unmatched_mentee_ids()
+
+
+def test_capacity_override_mentor_can_deny_and_returns_mentee_to_pool(client):
+    from app.seed import seed_pool
+
+    login(client, "staff.admin@example.org")
+    seed_pool()
+    mentor_id = next(iter(matching.accepted_profiles("mentor")))
+    accepted_mentees = sorted(matching.accepted_profiles("mentee"))
+    existing_match = Match(
+        mentee_id=accepted_mentees[0], mentor_id=mentor_id, status="approved", score=80,
+    )
+    db.session.add(existing_match)
+    db.session.commit()
+    mentee_id = min(matching.unmatched_mentee_ids())
+    response = client.post("/staff/matching/override", data={
+        "mentee_id": mentee_id, "mentor_id": mentor_id,
+    })
+    assert response.status_code == 302
+    ticket = db.session.query(MatchOverrideRequest).filter_by(mentee_id=mentee_id).one()
+
+    login(client, "backend.admin@example.org")
+    client.post(f"/admin/matching-override-requests/{ticket.id}/approve")
+    override_match = db.session.get(Match, ticket.match_id)
+    assert override_match.status == "released"
+
+    login(client, override_match.mentor.email)
+    dashboard = client.get("/dashboard")
+    assert b"confirm or deny this over-capacity match" in dashboard.data
+    client.post(f"/matches/{override_match.id}/confirmation", data={"response": "decline"})
+
+    assert override_match.status == "rejected"
+    assert mentee_id in matching.unmatched_mentee_ids()
+    feedback = db.session.query(MatchFeedback).filter_by(
+        match_id=override_match.id, reason="mentor_rejection"
+    ).one()
+    assert feedback.kind == "deny"
+    login(client, "staff.admin@example.org")
+    assert b"Mentor Rejection" in client.get("/staff/matching").data
+
+
+def test_mentee_declining_a_mentor_returns_to_pool_and_appears_in_staff_rejections(client):
+    login(client, "staff.admin@example.org")
+    match = matching.propose_all()[0]
+    client.post(f"/staff/matches/{match.id}/approve")
+
+    login(client, match.mentee.email)
+    response = client.post(f"/matches/{match.id}/confirmation", data={
+        "response": "decline", "reason": "mentee_rejection",
+    })
+    assert response.status_code == 302
+    assert match.status == "rejected"
+    assert match.mentee_id in matching.unmatched_mentee_ids()
+    assert db.session.query(MatchExclusion).filter_by(
+        mentee_id=match.mentee_id, mentor_id=match.mentor_id
+    ).count() == 1
+    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
+    assert (feedback.kind, feedback.reason, feedback.wants_rematch) == (
+        "deny", "mentee_rejection", True)
+
+    login(client, "staff.admin@example.org")
+    page = client.get("/staff/matching")
+    assert b"Mentee Rejection" in page.data
+    assert match.mentee.name.encode() in page.data
+
+
+def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
+    login(client, "staff.admin@example.org")
+    match = matching.propose_all()[0]
+    client.post(f"/staff/matches/{match.id}/approve")
+    login(client, match.mentee.email)
+
+    response = client.post(f"/matches/{match.id}/confirmation", data={
+        "response": "decline", "reason": "mentee_withdrawn",
+    })
+    assert response.status_code == 302
+    assert match.status == "withdrawn"
+    assert match.mentee.application.status == "withdrawn"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
+    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id).one()
+    assert (feedback.kind, feedback.reason, feedback.wants_rematch) == (
+        "withdraw", "mentee_withdrawn", False)
+
+    login(client, "staff.admin@example.org")
+    assert b"Mentee Withdrawn" in client.get("/staff/matching").data
+
+
+def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+    login(client, "staff.admin@example.org")
+    match = matching.propose_all()[0]
+    client.post(f"/staff/matches/{match.id}/approve")
+    login(client, match.mentee.email)
+    client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    response = client.post(f"/matches/{match.id}/release")
+
+    assert response.status_code == 302
+    assert match.status == "withdrawn"
+    assert match.mentee_id in matching.unmatched_mentee_ids()
+    assert all(candidate.mentor_id != match.mentor_id
+               for candidate in matching.ranking_for(match.mentee_id, limit=None))
+    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
+    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+
+
 def test_undo_auto_propose_and_cancel(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
@@ -403,7 +625,10 @@ def test_undo_reject_and_end(client):
 
     client.post(f"/staff/matches/{a.id}/approve")
     assert client.post(f"/staff/matches/{a.id}/unapprove").status_code == 400  # approval is final
-    assert a.status == "approved"
+    assert a.status == "released"
+    login(client, a.mentee.email)
+    client.post(f"/matches/{a.id}/confirmation", data={"response": "confirm"})
+    login(client, "staff.admin@example.org")
     client.post(f"/staff/matches/{a.id}/end")
     client.post(f"/staff/matches/{a.id}/reopen")
     assert a.status == "approved"
@@ -411,7 +636,8 @@ def test_undo_reject_and_end(client):
     client.post(f"/staff/matches/{b.id}/reject", data={"reason": "fit_concern", "comment": "Mismatch."})
     client.post(f"/staff/matches/{b.id}/unreject")
     assert b.status == "proposed"
-    assert db.session.query(MatchFeedback).count() == 0 and db.session.query(MatchExclusion).count() == 0
+    assert db.session.query(MatchFeedback).filter_by(match_id=b.id).count() == 0
+    assert db.session.query(MatchExclusion).count() == 0
 
     client.post(f"/staff/matches/{a.id}/reopen")  # already approved: refused, nothing breaks
     assert a.status == "approved"
@@ -423,6 +649,9 @@ def test_ended_pair_is_not_proposed_again(client):
     m = db.session.query(Match).filter_by(status="proposed").first()
     pair = (m.mentee_id, m.mentor_id)
     client.post(f"/staff/matches/{m.id}/approve")
+    login(client, m.mentee.email)
+    client.post(f"/matches/{m.id}/confirmation", data={"response": "confirm"})
+    login(client, "staff.admin@example.org")
     client.post(f"/staff/matches/{m.id}/end")
 
     assert m.mentee_id in matching.unmatched_mentee_ids()  # both are back in the pool...
@@ -461,7 +690,7 @@ def test_rematch_keeps_approved_and_reruns_only_rejected_and_unmatched(client):
     # Pool: Jordan and Riley, with Priya and Sam free. Neither pair shares a time slot, and the
     # rejected pairs are out, so they're matched anyway and flagged.
     client.post("/staff/matching/propose-all")
-    assert {(m.mentee_id, m.mentor_id) for m in db.session.query(Match).filter_by(status="approved")} == approved
+    assert {(m.mentee_id, m.mentor_id) for m in db.session.query(Match).filter_by(status="released")} == approved
     redo = {m.mentee_id: m for m in db.session.query(Match).filter_by(status="proposed")}
     assert {me: m.mentor_id for me, m in redo.items()} == {ids["jordan.kim"]: ids["sam.okafor"],
                                                           ids["riley.chen"]: ids["priya.raman"]}
@@ -472,8 +701,10 @@ def test_rematch_keeps_approved_and_reruns_only_rejected_and_unmatched(client):
 
 def test_staff_people_dashboards(client):
     login(client, "staff.admin@example.org")
-    page = client.get("/staff/people?role=mentee&q=jordan").data
-    assert b"Jordan Kim" in page and b"Priya Raman" not in page
+    response = client.get("/staff/people?role=mentee&q=jordan")
+    assert response.status_code == 302
+    page = client.get(response.headers["Location"]).data
+    assert b"Jordan Kim" in page
     jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
     assert client.get(f"/staff/people/{jordan.id}").status_code == 200
     staff = db.session.query(User).filter_by(role="staff").first()
@@ -500,6 +731,39 @@ def test_event_submission_checkin_feedback(client):
     client.post("/feedback", data={"event_id": event.id, "rating": 4})
     login(client, "staff.admin@example.org")
     assert b"4.0" in client.get("/staff/reports").data
+
+
+def test_staff_report_module_shows_attended_and_absent_users(client):
+    event = db.session.query(Event).first()
+    event.starts_at = utcnow() + timedelta(hours=1)
+    event.location = "Main Hall"
+    event.description = "Workshop description"
+    event.prework_prompt = "Bring a draft resume."
+    event.prework_due = utcnow() + timedelta(minutes=30)
+    event.postwork_prompt = "Write a reflection."
+    event.postwork_due = utcnow() + timedelta(days=1)
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    db.session.add_all([
+        Attendance(event_id=event.id, user_id=jordan.id),
+        Submission(event_id=event.id, user_id=jordan.id, kind="prework", body="Ready."),
+        Feedback(user_id=jordan.id, event_id=event.id, rating=4),
+    ])
+    db.session.commit()
+
+    login(client, "staff.admin@example.org")
+    reports = client.get("/staff/reports")
+    assert reports.status_code == 200
+    assert f"/staff/reports/modules/{event.id}".encode() in reports.data
+    response = client.get(f"/staff/reports/modules/{event.id}")
+    assert response.status_code == 200
+    assert b"Attended (1)" in response.data
+    assert jordan.name.encode() in response.data
+    assert b"Did not attend (" in response.data
+    assert b"Priya Raman" in response.data
+    for detail in (b"Module details", b"Main Hall", b"Workshop description", b"Bring a draft resume.",
+                   b"Write a reflection.", b"Prework submitted", b"Postwork submitted", b"Average rating",
+                   b"4.0", b"submitted"):
+        assert detail in response.data
 
 
 def test_postwork_opens_after_session(client):
@@ -689,13 +953,13 @@ def test_admin_matching_logistics_and_user_match_list(client):
 
 def test_staff_people_search_is_live_and_table_is_sortable(client):
     login(client, "staff.admin@example.org")
-    response = client.get("/staff/people?q=jordan")
+    response = client.get("/staff/applications?status=all&q=jordan")
     assert response.status_code == 200
     assert b'value="jordan"' in response.data
-    assert b'data-live-filter="staff-people"' in response.data
+    assert b'data-live-filter="staff-applicants"' in response.data
     assert b'data-sort-key="role"' in response.data
-    assert b'data-sort-key="matched"' in response.data
-    assert b"Priya Raman" in response.data
+    assert b'data-sort-key="match"' in response.data
+    assert b"Jordan Kim" in response.data
 
 
 def test_login_records_last_login(client):
@@ -736,7 +1000,7 @@ def test_admin_user_detail_edits_account_and_overrides_match(client):
         "role": "mentee", "matched_to": str(mentor.id), "status": "active",
     })
     assert response.status_code == 302
-    match = db.session.query(Match).filter_by(mentee_id=mentee.id, mentor_id=mentor.id, status="approved").one()
+    match = db.session.query(Match).filter_by(mentee_id=mentee.id, mentor_id=mentor.id, status="released").one()
     log = db.session.query(AuditLog).filter_by(action="account_updated", target_user_id=mentee.id).one()
     assert "manual match assignment override changed" in log.description
     assert mentor.name not in log.description
@@ -774,6 +1038,88 @@ def test_admin_requires_password_change_without_bypassing_login_password(client)
     assert not user.must_reset_password
     assert user.check_password("brandnew123")
     assert client.get("/dashboard").status_code == 200
+
+
+def test_admin_delete_account_removes_owned_and_matched_data(client):
+    login(client, "backend.admin@example.org")
+    admin = db.session.query(User).filter_by(email="backend.admin@example.org").one()
+    mentee = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(email="priya.raman@example.org").one()
+    match = Match(mentee_id=mentee.id, mentor_id=mentor.id, status="approved", score=75)
+    db.session.add(match)
+    db.session.flush()
+    message = Message(match_id=match.id, sender_id=mentee.id, body="Private conversation")
+    db.session.add_all([
+        message,
+        Attendance(event_id=1, user_id=mentee.id),
+        AuditLog(actor_id=mentee.id, actor_name=mentee.name, actor_role=mentee.role,
+                 target_user_id=mentee.id, action="prior_change",
+                 description=f"Updated {mentee.name} ({mentee.email})."),
+    ])
+    user_id, match_id = mentee.id, match.id
+    db.session.commit()
+
+    page = client.get(f"/admin/users/{user_id}")
+    assert b"Delete account" in page.data
+    assert b"confirm(" in page.data
+    response = client.post(f"/admin/users/{user_id}/delete")
+    assert response.status_code == 302
+    assert db.session.get(User, user_id) is None
+    assert db.session.get(Match, match_id) is None
+    assert db.session.query(Message).filter_by(match_id=match_id).count() == 0
+    assert db.session.query(Attendance).filter_by(user_id=user_id).count() == 0
+    assert db.session.query(Application).filter_by(user_id=user_id).count() == 0
+    assert db.session.query(AuditLog).filter_by(action="account_deleted").count() == 1
+    prior_log = db.session.query(AuditLog).filter_by(action="prior_change").one()
+    assert prior_log.actor_id is None and prior_log.target_user_id is None
+    assert mentee.name not in prior_log.description
+    assert mentee.email not in prior_log.description
+    assert prior_log.actor_name == "Deleted account"
+    assert db.session.get(User, admin.id) is not None
+
+
+def test_staff_applicants_have_pending_all_filters_and_sorting(client):
+    login(client, "staff.admin@example.org")
+    pending = db.session.query(Application).filter_by(status="submitted").one()
+    page = client.get("/staff/applications")
+    assert page.status_code == 200
+    assert b"Pending Approval" in page.data
+    assert b"All" in page.data
+    assert b"data-sort-key=\"name\"" in page.data
+    assert b"data-sort-key=\"acceptance_status\"" in page.data
+    assert b"Attendance_Rate" in page.data
+    assert b"data-sort-select" in page.data
+    assert b"Acceptance Status" in page.data
+    assert b"Attendance_Rate" in page.data
+    assert b"data-sort-key=\"application\"" in page.data
+    assert b"data-sort-key=\"match\"" in page.data
+    assert b"data-sort-key=\"submitted\"" in page.data
+    assert b"Quick accept all pending" in page.data
+    assert b"Other sort fields" not in page.data
+    assert b'data-sort-list="staff-applicants" data-sort-select' not in page.data
+    assert b"Warning: this will approve every application currently pending approval." in page.data
+    assert pending.user.name.encode() in page.data
+    table_headers = page.data.split(b"<thead", 1)[1].split(b"</thead>", 1)[0]
+    expected_headers = [
+        b">Name<", b">Role<", b">Application<", b">Attendance_Rate<",
+        b">Match<", b">Submitted<", b">Acceptance Status<",
+    ]
+    assert [header for header in expected_headers if header in table_headers] == expected_headers
+    assert table_headers.count(b"<th") == 7
+    assert client.get("/staff/applications?status=all").status_code == 200
+    assert client.get("/staff/applications?status=all").data.count(b"data-list-row") > 1
+
+
+def test_staff_quick_accept_all_pending_applications(client):
+    login(client, "staff.admin@example.org")
+    pending = db.session.query(Application).filter_by(status="submitted").all()
+    assert pending
+    response = client.post("/staff/applications/quick-accept")
+    assert response.status_code == 302
+    assert all(application.status == "accepted" for application in pending)
+    assert all(application.reviewed_by_id is not None for application in pending)
+    assert db.session.query(AuditLog).filter_by(action="applications_bulk_accepted").count() == 1
+    assert db.session.query(Application).filter_by(status="submitted").count() == 0
 
 
 def test_deactivated_account_is_signed_out_and_unmatched(client):

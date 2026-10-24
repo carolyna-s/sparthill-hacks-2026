@@ -44,9 +44,8 @@
           <a href="{{ url_for('admin.matching_logistics') }}" class="text-slate-600 hover:text-brand-700">Matching logistics</a>
           <a href="{{ url_for('admin.audit_logs') }}" class="text-slate-600 hover:text-brand-700">Audit Logs</a>
         {% elif current_user.is_staff %}
-          <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-brand-700">Overview</a>
+          <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
           <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-brand-700">Applicants</a>
-          <a href="{{ url_for('staff.people') }}" class="text-slate-600 hover:text-brand-700">People</a>
           <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-brand-700">Matching</a>
           <a href="{{ url_for('program.modules') }}" class="text-slate-600 hover:text-brand-700">Modules</a>
           <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-brand-700">Reports</a>
@@ -152,6 +151,10 @@
 
       const body = table.querySelector("[data-sort-body]");
       const priorities = [];
+      const sortButtons = [
+        ...table.querySelectorAll("[data-sort-key]"),
+        ...document.querySelectorAll(`[data-sort-list="${listName}"][data-sort-key]`)
+      ];
       const sortRows = () => {
         rows.sort((left, right) => {
           for (const sort of priorities) {
@@ -168,7 +171,7 @@
           return 0;
         });
         rows.forEach((row) => body.appendChild(row));
-        table.querySelectorAll("[data-sort-key]").forEach((button) => {
+        sortButtons.forEach((button) => {
           const index = priorities.findIndex((sort) => sort.key === button.dataset.sortKey);
           button.setAttribute("aria-sort", index < 0 ? "none" : priorities[index].direction === 1 ? "ascending" : "descending");
           const indicator = button.querySelector("[data-sort-indicator]");
@@ -183,16 +186,24 @@
         });
       };
 
-      table.querySelectorAll("[data-sort-key]").forEach((button) => {
+      const promoteSort = (key) => {
+        const index = priorities.findIndex((sort) => sort.key === key);
+        if (index === 0) priorities[0].direction *= -1;
+        else {
+          if (index > 0) priorities.splice(index, 1);
+          priorities.unshift({key, direction: 1});
+        }
+        sortRows();
+      };
+      sortButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          const key = button.dataset.sortKey;
-          const index = priorities.findIndex((sort) => sort.key === key);
-          if (index === 0) priorities[0].direction *= -1;
-          else {
-            if (index > 0) priorities.splice(index, 1);
-            priorities.unshift({key, direction: 1});
-          }
-          sortRows();
+          promoteSort(button.dataset.sortKey);
+        });
+      });
+      document.querySelectorAll(`[data-sort-list="${listName}"][data-sort-select]`).forEach((select) => {
+        select.addEventListener("change", () => {
+          if (select.value) promoteSort(select.value);
+          select.value = "";
         });
       });
     });

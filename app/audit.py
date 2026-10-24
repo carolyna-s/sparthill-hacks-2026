@@ -11,6 +11,7 @@ def record_change(action: str, description: str, target_user_id: int | None = No
         raise RuntimeError("Audit changes require an authenticated staff or admin actor.")
     db.session.add(AuditLog(
         actor_id=current_user.id,
+        actor_name=current_user.name,
         actor_role=current_user.role,
         target_user_id=target_user_id,
         action=action,

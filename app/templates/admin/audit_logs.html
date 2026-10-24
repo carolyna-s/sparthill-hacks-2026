@@ -14,7 +14,8 @@
       <tr class="border-t align-top">
         <td class="py-2 pr-4 whitespace-nowrap">{{ when(row.created_at) }}</td>
         <td class="py-2 pr-4 whitespace-nowrap">
-          {{ row.actor.name }} <span class="text-slate-500">({{ role_labels[row.actor_role] }})</span>
+          {{ row.actor.name if row.actor else row.actor_name or "Deleted account" }}
+          <span class="text-slate-500">({{ role_labels[row.actor_role] }})</span>
         </td>
         <td class="py-2">{{ row.description }}</td>
       </tr>

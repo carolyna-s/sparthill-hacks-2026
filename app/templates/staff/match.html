@@ -4,7 +4,9 @@
 {# One page, three uses: the full overview ("More info"), and the confirmation step for
    ?action=approve or ?action=reject. #}
 {% block content %}
-<a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500">← Back to matching</a>
+<a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500">
+  {{ "Exit review queue" if queue else "← Back to matching" }}
+</a>
 <h1 class="text-2xl font-semibold mt-1 mb-1">
   {% if action == 'approve' %}Approve {% elif action == 'reject' %}Reject {% endif %}{{ m.mentee.name }} → {{ m.mentor.name }}
   {{ status_badge(m.status) }}</h1>
@@ -20,18 +22,20 @@
   <div>
     {% if action == 'approve' %}
       {% call card("Approve this match?") %}
-        <p class="text-sm text-slate-600 mb-4">They become an active match and can start messaging each other.
-          This is final: to undo it later, end the match.</p>
+        <p class="text-sm text-slate-600 mb-4">This sends the match to the mentee for confirmation.
+          Messaging becomes available once they confirm.</p>
         <div class="flex gap-2 items-center">
           {{ post(url_for('staff.decide_match', match_id=m.id, decision='approve'), "Confirm approval", "primary",
-                  next=url_for('staff.matching_page')) }}
-          <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="text-sm text-slate-500">Not yet</a>
+                  next=url_for('staff.matching_page'), fields={'queue': 1} if queue else {}) }}
+          <a href="{{ url_for('staff.match_review', match_id=m.id, queue=1 if queue else None) }}"
+             class="text-sm text-slate-500">Not yet</a>
         </div>
       {% endcall %}
     {% elif action == 'reject' %}
       {% call card("Why are you rejecting it?") %}
       <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="space-y-3">
         {{ csrf() }}
+        {% if queue %}<input type="hidden" name="queue" value="1">{% endif %}
         <fieldset>
           {% for key, label in deny_reasons.items() %}
             <label class="flex items-start gap-2 text-sm py-0.5">
@@ -46,7 +50,8 @@
         <p class="text-xs text-slate-500">Saved with the match so the matching can learn from it. This pair won't be proposed again.</p>
         <div class="flex gap-2 items-center">
           {{ btn("Reject match", "danger") }}
-          <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="text-sm text-slate-500">Not yet</a>
+          <a href="{{ url_for('staff.match_review', match_id=m.id, queue=1 if queue else None) }}"
+             class="text-sm text-slate-500">Not yet</a>
         </div>
       </form>
       <script>
@@ -64,11 +69,16 @@
     {% elif m.status == 'proposed' %}
       {% call card("Decision") %}
         <div class="flex flex-wrap gap-2">
-          <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve') }}" class="text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
-          <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject') }}" class="text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
+          <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve', queue=1 if queue else None) }}" class="text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
+          <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject', queue=1 if queue else None) }}" class="text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
           {{ post(url_for('staff.cancel_proposals'), "Cancel proposal", fields={'ids': m.id},
                   next=url_for('staff.matching_page')) }}
         </div>
+      {% endcall %}
+    {% elif m.status == 'released' %}
+      {% call card("Waiting for mentee confirmation") %}
+        <p class="text-sm mb-3">The mentee has been notified and must confirm before messaging is enabled.</p>
+        {% if m.confirm_by %}<p class="text-xs text-slate-500">Response due {{ m.confirm_by.strftime('%b %d, %Y') }}.</p>{% endif %}
       {% endcall %}
     {% else %}
       {% call card("Decision") %}

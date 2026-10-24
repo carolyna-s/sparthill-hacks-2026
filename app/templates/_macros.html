@@ -42,8 +42,9 @@
 {% macro status_badge(status) %}
 {% set colors = {'draft': 'bg-slate-100', 'submitted': 'bg-amber-100 text-amber-800', 'accepted': 'bg-emerald-100 text-emerald-800',
                  'rejected': 'bg-red-100 text-red-800', 'proposed': 'bg-amber-100 text-amber-800',
+                 'released': 'bg-sky-100 text-sky-800',
                  'approved': 'bg-emerald-100 text-emerald-800', 'ended': 'bg-slate-100'} %}
-<span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ status }}</span>
+<span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ 'awaiting confirmation' if status == 'released' else status }}</span>
 {% endmacro %}
 
 {% macro input_cls() %}w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100{% endmacro %}

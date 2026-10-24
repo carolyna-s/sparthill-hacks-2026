@@ -52,6 +52,9 @@
   <p class="text-sm text-slate-600 mb-3">
     Require the user to enter their current password at login, then choose a new password.
   </p>
+  {% endif %}
+  <div class="flex flex-wrap gap-3 items-center">
+  {% if not u.must_reset_password %}
   <form method="post" action="{{ url_for('admin.require_password_reset', user_id=u.id) }}"
         onsubmit="return confirm('Require this user to choose a new password at their next login?')">
     {{ csrf() }}
@@ -60,6 +63,16 @@
     </button>
   </form>
   {% endif %}
+  {% if u.id != current_user.id %}
+  <form method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+        onsubmit='return confirm({{ ("Permanently delete " ~ u.name ~ "? This removes the account, application, profile, and associated user data. This cannot be undone.")|tojson }})'>
+    {{ csrf() }}
+    <button class="rounded-lg bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-800">
+      Delete account
+    </button>
+  </form>
+  {% endif %}
+  </div>
   {% endcall %}
 </div>
 {% endblock %}

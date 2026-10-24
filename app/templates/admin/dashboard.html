@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card %}
+{% from "_macros.html" import card, csrf %}
 {% from "admin/_macros.html" import when, account_status, toggle_active, stat, by_role_table with context %}
 {% block content %}
 <div class="flex justify-between items-center mb-5">
@@ -12,6 +12,35 @@
   {{ stat("New in the last 7 days", totals.new_week) }}
   {{ stat("Deactivated", totals.inactive, url_for('admin.users', status='inactive')) }}
 </dl>
+
+{% if override_requests %}
+{% call card("Capacity override requests (" ~ override_requests|length ~ ")") %}
+  <p class="text-sm text-slate-500 mb-3">Approving a request permits an over-capacity assignment. The mentee must still confirm the match.</p>
+  <div class="space-y-3">
+    {% for item in override_requests %}
+      <div class="border-t first:border-t-0 pt-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-sm">
+          <p><span class="font-medium">{{ item.ticket.mentee.name }}</span> → <span class="font-medium">{{ item.ticket.mentor.name }}</span></p>
+          <p class="text-xs text-slate-500">Requested by {{ item.ticket.requested_by.name }} · {{ item.ticket.created_at|ago }}</p>
+          <p class="text-xs text-amber-800">Current mentor load: {{ item.load }}/1</p>
+        </div>
+        <div class="flex gap-2">
+          <form method="post" action="{{ url_for('admin.decide_matching_override', request_id=item.ticket.id, decision='approve') }}"
+                onsubmit="return confirm('Approve this over-capacity match and send it to the mentee for confirmation?')">
+            {{ csrf() }}
+            <button class="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">Approve</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.decide_matching_override', request_id=item.ticket.id, decision='deny') }}"
+                onsubmit="return confirm('Deny this capacity override request?')">
+            {{ csrf() }}
+            <button class="rounded border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">Deny</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endcall %}
+{% endif %}
 
 {% call card("Accounts by role") %}{{ by_role_table(by_role) }}{% endcall %}
 

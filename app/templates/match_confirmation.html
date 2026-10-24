@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, csrf, input_cls %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="text-sm text-slate-500 hover:text-brand-700">← Back to dashboard</a>
+<h1 class="text-2xl font-semibold mt-2 mb-5">Match confirmation</h1>
+
+{% call card("Your proposed match") %}
+  <p class="text-lg font-semibold">{{ match.mentor.name if actor_role == 'mentee' else match.mentee.name }}</p>
+  {% set other = match.mentor if actor_role == 'mentee' else match.mentee %}
+  {% if other.profile.headline or other.profile.organization %}
+    <p class="text-sm text-slate-500 mb-3">
+      {{ other.profile.headline }}{% if other.profile.headline and other.profile.organization %} · {% endif %}{{ other.profile.organization }}
+    </p>
+  {% endif %}
+  {% if other.profile.bio %}<p class="text-sm whitespace-pre-line mb-4">{{ other.profile.bio }}</p>{% endif %}
+  {% if waiting_for_other %}
+    <p class="text-sm text-amber-800">You confirmed this match. It will become active once the mentor confirms.</p>
+  {% elif actor_role == 'mentor' %}
+    <p class="text-sm text-slate-600 mb-4">This is an admin-approved capacity override. Confirm to activate it after the mentee also confirms, or deny it to return the mentee to the matching pool.</p>
+  {% else %}
+    <p class="text-sm text-slate-600 mb-4">Confirm to approve this match. If you decline, you will be returned to the matchmaking pool or you can choose to withdraw from the program.</p>
+  {% endif %}
+
+  {% if not waiting_for_other %}
+  <div class="flex flex-wrap items-start gap-3">
+    <form method="post" action="{{ url_for('main.respond_to_match', match_id=match.id) }}">
+      {{ csrf() }}<input type="hidden" name="response" value="confirm">
+      <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+        Confirm match
+      </button>
+    </form>
+    {% if actor_role == 'mentor' %}
+      <form method="post" action="{{ url_for('main.respond_to_match', match_id=match.id) }}"
+            onsubmit="return confirm('Deny this capacity override and return the mentee to the matching pool?')">
+        {{ csrf() }}<input type="hidden" name="response" value="decline">
+        <button class="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+          Deny match
+        </button>
+      </form>
+    {% else %}
+    <details class="relative">
+      <summary class="cursor-pointer list-none rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">
+        Decline match
+      </summary>
+      <form method="post" action="{{ url_for('main.respond_to_match', match_id=match.id) }}"
+            class="mt-3 w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-slate-200 bg-white p-4 shadow-lg">
+        {{ csrf() }}<input type="hidden" name="response" value="decline">
+        <label class="block text-sm font-medium mb-1" for="decline-reason">Why are you declining?</label>
+        <select id="decline-reason" name="reason" required class="{{ input_cls() }}">
+          <option value="" selected disabled>Choose a reason</option>
+          <option value="mentee_rejection">I do not want this mentor</option>
+          <option value="mentee_withdrawn">I wish to withdraw from the mentorship program</option>
+        </select>
+        <button class="mt-3 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700">
+          Submit response
+        </button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endcall %}
+{% endblock %}

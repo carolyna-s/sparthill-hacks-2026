@@ -2,7 +2,7 @@
 {% from "_macros.html" import csrf, card, btn, tags, status_badge, input_cls %}
 {% block content %}
 {% set p = a.user.profile %}
-<a href="{{ url_for('staff.applications', status=a.status) }}" class="text-sm text-slate-500">← Back to applicants</a>
+<a href="{{ url_for('staff.applications', status='pending' if a.status == 'submitted' else 'all') }}" class="text-sm text-slate-500">← Back to Applicants</a>
 <h1 class="text-2xl font-semibold mt-1 mb-1">{{ a.user.name }} {{ status_badge(a.status) }}</h1>
 <p class="text-sm text-slate-500 mb-5">{{ a.user.role }} · {{ a.user.email }} · {{ p.headline }} {{ ('· ' ~ p.organization) if p.organization }}</p>
 <div class="grid md:grid-cols-3 gap-5">

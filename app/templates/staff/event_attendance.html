@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{% block content %}
+<a href="{{ url_for('staff.reports') }}" class="text-sm text-brand-600">← Reports</a>
+<h1 class="text-2xl font-semibold mt-2 mb-1">{{ event.title }}</h1>
+<p class="text-sm text-slate-500 mb-5">{{ event.starts_at.strftime('%b %d, %Y · %I:%M %p') }}</p>
+
+{% call card("Module details") %}
+<dl class="grid sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+  <div><dt class="text-slate-500">Date and time</dt><dd>{{ event.starts_at.strftime('%b %d, %Y · %I:%M %p') }}</dd></div>
+  <div><dt class="text-slate-500">Location</dt><dd>{{ event.location or 'Not specified' }}</dd></div>
+  <div class="sm:col-span-2"><dt class="text-slate-500">Description</dt>
+    <dd class="whitespace-pre-line">{{ event.description or 'No description provided.' }}</dd></div>
+  {% if event.prework_prompt %}
+  <div><dt class="text-slate-500">Prework</dt><dd class="whitespace-pre-line">{{ event.prework_prompt }}</dd>
+    {% if event.prework_due %}<dd class="text-slate-500">Due {{ event.prework_due.strftime('%b %d, %Y · %I:%M %p') }}</dd>{% endif %}
+  </div>
+  {% endif %}
+  {% if event.postwork_prompt %}
+  <div><dt class="text-slate-500">Postwork</dt><dd class="whitespace-pre-line">{{ event.postwork_prompt }}</dd>
+    {% if event.postwork_due %}<dd class="text-slate-500">Due {{ event.postwork_due.strftime('%b %d, %Y · %I:%M %p') }}</dd>{% endif %}
+  </div>
+  {% endif %}
+</dl>
+{% endcall %}
+
+<dl class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5 text-sm">
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">Attendance</dt>
+    <dd class="text-xl font-semibold">{{ attended_count }}/{{ participant_count }}</dd>
+    <dd class="text-slate-500">{{ "%.0f%%"|format(attendance_rate) if attendance_rate is not none else 'No participants' }}</dd>
+  </div>
+  {% if event.prework_prompt %}
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">Prework submitted</dt>
+    <dd class="text-xl font-semibold">{{ prework_count }}/{{ participant_count }}</dd>
+  </div>
+  {% endif %}
+  {% if event.postwork_prompt %}
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">Postwork submitted</dt>
+    <dd class="text-xl font-semibold">{{ postwork_count }}/{{ participant_count }}</dd>
+  </div>
+  {% endif %}
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">Average rating</dt>
+    <dd class="text-xl font-semibold">{{ "%.1f"|format(average_rating) if average_rating is not none else '—' }}</dd>
+  </div>
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">Participants</dt>
+    <dd class="text-xl font-semibold">{{ participant_count }}</dd>
+    <dd class="text-slate-500">active mentees and mentors at module date</dd>
+  </div>
+</dl>
+
+<div class="grid md:grid-cols-2 gap-5">
+  {% call card("Attended (" ~ attended|length ~ ")") %}
+  <ul class="divide-y text-sm">
+    {% for user in attended %}
+    <li class="py-2">
+      <div><a class="text-brand-600" href="{{ url_for('staff.person', user_id=user.id) }}">{{ user.name }}</a>
+        <span class="text-slate-500">· {{ user.role }} · checked in {{ attendance_by_user[user.id].strftime('%b %d, %I:%M %p') }}</span></div>
+      <div class="mt-1 text-xs text-slate-500">
+        Prework: {{ 'submitted' if (user.id, 'prework') in submission_by_user else 'not submitted' }}
+        · Postwork: {{ 'submitted' if (user.id, 'postwork') in submission_by_user else 'not submitted' }}
+      </div>
+    </li>
+    {% else %}<li class="py-2 text-slate-500">No one has checked in.</li>{% endfor %}
+  </ul>
+  {% endcall %}
+
+  {% call card("Did not attend (" ~ absent|length ~ ")") %}
+  <ul class="divide-y text-sm">
+    {% for user in absent %}
+    <li class="py-2">
+      <div><a class="text-brand-600" href="{{ url_for('staff.person', user_id=user.id) }}">{{ user.name }}</a>
+        <span class="text-slate-500">· {{ user.role }}</span></div>
+      <div class="mt-1 text-xs text-slate-500">
+        Prework: {{ 'submitted' if (user.id, 'prework') in submission_by_user else 'not submitted' }}
+        · Postwork: {{ 'submitted' if (user.id, 'postwork') in submission_by_user else 'not submitted' }}
+      </div>
+    </li>
+    {% else %}<li class="py-2 text-slate-500">Everyone checked in.</li>{% endfor %}
+  </ul>
+  {% endcall %}
+</div>
+{% endblock %}

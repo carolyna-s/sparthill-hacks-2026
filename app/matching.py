@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 
 from . import embeddings
 from .extensions import db
-from .models import Application, Match, MatchExclusion, Profile, User
+from .models import Application, Match, MatchExclusion, MatchOverrideRequest, Profile, User
 
 MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 
@@ -217,14 +217,16 @@ def accepted_profiles(role: str) -> dict[int, dict]:
 def open_slots() -> dict[int, int]:
     """1 for each accepted mentor with no approved or pending match, else 0 (one-to-one)."""
     taken = {m for (m,) in db.session.query(Match.mentor_id)
-             .filter(Match.status.in_(("approved", "proposed")))}
+             .filter(Match.status.in_(("approved", "released", "proposed")))}
     return {mid: int(mid not in taken) for mid in accepted_profiles("mentor")}
 
 
 def unmatched_mentee_ids() -> set[int]:
     matched = {m for (m,) in db.session.query(Match.mentee_id)
-               .filter(Match.status.in_(("approved", "proposed")))}
-    return set(accepted_profiles("mentee")) - matched
+               .filter(Match.status.in_(("approved", "released", "proposed")))}
+    awaiting_override = {mentee_id for (mentee_id,) in db.session.query(MatchOverrideRequest.mentee_id)
+                         .filter_by(status="pending")}
+    return set(accepted_profiles("mentee")) - matched - awaiting_override
 
 
 def excluded_pairs() -> set[tuple[int, int]]:

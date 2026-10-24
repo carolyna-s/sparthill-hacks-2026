@@ -17,14 +17,14 @@
 <table class="w-full text-sm">
   {% for m in proposed %}
   <tr class="border-t align-top">
-    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a>
+    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id, queue=1) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a>
       {% if m.rematch_round > 1 %}<span class="ml-1 text-xs rounded px-1.5 py-0.5 bg-sky-100 text-sky-800">re-match #{{ m.rematch_round }}</span>{% endif %}</td>
     <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
     <td class="py-2">{{ why(m.score_breakdown) }}</td>
     <td class="py-2 text-right whitespace-nowrap">
-      <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="inline-block text-sm text-indigo-600 mr-1">More info</a>
-      <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve') }}" class="inline-block text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
-      <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject') }}" class="inline-block text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id, queue=1) }}" class="inline-block text-sm text-indigo-600 mr-1">More info</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve', queue=1) }}" class="inline-block text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
+      <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject', queue=1) }}" class="inline-block text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
       {{ post(url_for('staff.cancel_proposals'), "Cancel", fields={'ids': m.id}) }}
     </td>
   </tr>
@@ -37,8 +37,45 @@
   you approve or reject it.</p>
 {% for u in unmatched %}
   <div class="border-t py-3">
-    <p class="font-medium text-sm mb-1">{{ u.name }}</p>
-    <div class="mb-2">{{ tags(([u.profile.industry] if u.profile.industry else []) + u.profile.goals + u.profile.development_areas) }}</div>
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="font-medium text-sm mb-1">{{ u.name }}</p>
+        <div class="mb-2">{{ tags(([u.profile.industry] if u.profile.industry else []) + u.profile.goals + u.profile.development_areas) }}</div>
+      </div>
+      {% if override_mentee_id != u.id %}
+        <form method="post" action="{{ url_for('staff.start_manual_override') }}" class="shrink-0"
+              onsubmit='return confirm({{ "Are you sure you want to override matchmaking service?"|tojson }})'>
+          {{ csrf() }}<input type="hidden" name="mentee_id" value="{{ u.id }}">
+          <button class="rounded border border-red-600 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-600 hover:text-white">
+            Override matchmaker
+          </button>
+        </form>
+      {% endif %}
+    </div>
+    {% if override_mentee_id == u.id %}
+      <form method="post" action="{{ url_for('staff.manual_override') }}"
+            class="mb-3 flex flex-wrap items-end gap-2"
+            onsubmit="const option = this.elements.mentor_id.selectedOptions[0]; if (!option || !option.value) return false; const full = option.dataset.full === '1'; return confirm('Mentor currently has ' + option.dataset.load + '/' + option.dataset.capacity + ' mentees. ' + (full ? 'Send an override request to the backend admin?' : 'Proceed with the override?'));">
+        {{ csrf() }}
+        <input type="hidden" name="mentee_id" value="{{ u.id }}">
+        <label class="text-sm">
+          <span class="block text-xs text-slate-500 mb-1">Choose a mentor (full mentors need admin approval)</span>
+          <select name="mentor_id" required class="rounded border border-slate-300 px-3 py-2"
+                  onchange="const option = this.selectedOptions[0]; if (option && option.value) { const full = option.dataset.full === '1'; const prompt = 'Mentor currently has ' + option.dataset.load + '/' + option.dataset.capacity + ' mentees. ' + (full ? 'Send an override request to the backend admin?' : 'Proceed with the override?'); if (confirm(prompt)) this.form.submit(); else this.value = ''; }">
+            <option value="" selected disabled>Select mentor</option>
+            {% for mentor_id, mentor in mentors.items() %}
+              {% set load = mentor_loads.get(mentor_id, 0) %}
+              <option value="{{ mentor_id }}" data-load="{{ load }}" data-capacity="{{ mentor_capacity }}"
+                      data-full="{{ 1 if load >= mentor_capacity else 0 }}">
+                {{ mentor.name }} — {{ load }}/{{ mentor_capacity }} mentees{% if load >= mentor_capacity %} (full){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="rounded border px-3 py-2 text-sm hover:bg-slate-50">Continue</button>
+        <a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500 py-2">Cancel</a>
+      </form>
+    {% endif %}
     <table class="w-full text-sm">
       {% for c in rankings[u.id] %}
       <tr class="align-top">
@@ -56,6 +93,18 @@
   </div>
 {% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}
 {% endcall %}
+
+{% if awaiting_confirmation %}
+{% call card("Awaiting mentee confirmation (" ~ awaiting_confirmation|length ~ ")") %}
+  {% for m in awaiting_confirmation %}
+    <div class="border-t first:border-t-0 py-2 text-sm">
+      <span class="font-medium">{{ m.mentee.name }} → {{ m.mentor.name }}</span>
+      <span class="text-slate-500">· released {{ m.released_at.strftime('%b %d') if m.released_at else 'recently' }}</span>
+      {% if m.confirm_by %}<span class="text-slate-500">· respond by {{ m.confirm_by.strftime('%b %d') }}</span>{% endif %}
+    </div>
+  {% endfor %}
+{% endcall %}
+{% endif %}
 
 {% call card("Active matches (" ~ approved|length ~ ")") %}
 <table class="w-full text-sm">
@@ -75,7 +124,7 @@
   <div class="border-t first:border-t-0 py-3">
     <div class="flex justify-between items-start gap-3">
       <a class="text-sm font-medium hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=f.match_id) }}">{{ f.match.mentee.name }} → {{ f.match.mentor.name }}</a>
-      {% if f.match.status == 'rejected' %}{{ post(url_for('staff.decide_match', match_id=f.match_id, decision='unreject'), "Undo rejection",
+      {% if f.kind == 'deny' and f.reason not in ('mentee_rejection', 'mentor_rejection') and f.match.status == 'rejected' %}{{ post(url_for('staff.decide_match', match_id=f.match_id, decision='unreject'), "Undo rejection",
                                                     confirm="Are you sure you want to proceed with undoing the rejection (" ~ f.match.mentee.name ~ " → " ~ f.match.mentor.name ~ ")?") }}{% endif %}
     </div>
     <div class="mt-1">{{ denial(f) }}</div>

@@ -12,7 +12,7 @@
   <thead class="text-left text-slate-500"><tr><th class="py-1">Module</th><th>Date</th><th>Attended</th><th>Prework</th><th>Postwork</th><th>Avg rating</th></tr></thead>
   {% for row in report.events %}
   <tr class="border-t">
-    <td class="py-2"><a class="text-brand-600" href="{{ url_for('program.module', event_id=row.event.id) }}">{{ row.event.title }}</a></td>
+    <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.event_attendance', event_id=row.event.id) }}">{{ row.event.title }}</a></td>
     <td>{{ row.event.starts_at.strftime('%b %d') }}</td>
     <td>{{ row.attended }}/{{ report.participants }}</td>
     <td>{{ row.prework if row.event.prework_prompt else '—' }}</td>

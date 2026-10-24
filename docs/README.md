@@ -51,31 +51,45 @@ created by an admin.
 
 ### Staff
 
-Staff land on **Overview** and work through the cycle from the top nav:
+Staff land on **Dashboard** (Staff Overview) and work through the cycle from the top nav:
 
-- **Applicants:** read each application and accept or reject it (with notes). The last
-  decision can be undone.
-- **People:** search mentees and mentors and open anyone's dashboard as they see it.
+- **Applicants:** the combined participant and application list. Read each application and accept
+  or reject it (with notes). The table has Name, Role, Application, Attendance_Rate, Match,
+  Submitted, and Acceptance Status columns and
+  pending/all filters, live search, sortable columns, quick accept/reject controls, and a confirmed
+  bulk accept action for every pending application. The last decision can be undone.
 - **Matching:** *Auto-propose* runs the engine over everyone accepted and unmatched, or propose
-  for one mentee. Open a pair to see the score breakdown, then **approve** (final), **reject**
-  (needs a reason; the pair is never proposed again), or cancel proposals. Rejections and ends
-  can be undone.
+  for one mentee. Staff **approve** to release a match to the mentee for confirmation, **reject**
+  (needs a reason; the pair is never proposed again), or cancel proposals. Reviews started from
+  the proposal list continue through the remaining proposals until staff exits or the queue is
+  complete. Mentees must confirm before a match becomes active; declining a mentor returns them
+  to the pool, while withdrawing ends their application. Staff can override the matchmaker for
+  an accepted unmatched mentee and an accepted mentor with an open slot; assigning a full mentor
+  sends a request to the backend admin for approval. Any approved capacity override still waits
+  for both mentee and mentor confirmation, shown as notifications inside each participant's
+  **Your Match** section. If the mentor denies it, the mentee returns to the pool. Overrides are
+  recorded in the audit log. The mentee's matchmaker override control is positioned at the far
+  right of their row.
 - **Modules:** create a module with a date, location, check-in code, and optional pre-/post-work
   prompts and due dates. On a module page, staff see the check-in code to display at the session.
-- **Reports:** attendance and pre-/post-work counts per module, plus totals.
+- **Reports:** attendance and pre-/post-work counts per module, plus totals. Open a module from
+  the report to see the participant lists for those who checked in and those who did not.
 
 ### Admin (`backend` role)
 
 Admins can open every staff page, plus **/admin**:
 
 - **Admin Dashboard:** account totals, logins by role over the last 7 and 30 days, accounts that never
-  logged in, recent activity and sign-ups, and the staff roster.
+  logged in, recent activity and sign-ups, staff roster, and approve/deny actions for mentor
+  capacity override requests.
 - **Users:** mentor, mentee, and staff accounts, match status, and disable/enable controls. Search
   updates as you type; click column headings to sort, with the latest heading as the primary sort.
   The list includes last access and attendance rate (check-ins divided by past modules since signup;
   `N/A` when no past module is eligible); clicking a username opens the account editor.
-  Disabling an account signs the person out on their next request and blocks login. Accounts are
-  deactivated, never deleted.
+  Disabling an account signs the person out on their next request and blocks login. Accounts can
+  also be permanently deleted there; related user, application, profile, and match data is removed
+  and audit references are anonymized. The active admin cannot delete their own account or the last
+  active admin account.
 - **Matching logistics:** staff accept/deny counts and a dropdown of denied pairs with reasons.
 - **New staff account:** create staff accounts with a temporary password. Backend admin accounts
   cannot be created through the interface.

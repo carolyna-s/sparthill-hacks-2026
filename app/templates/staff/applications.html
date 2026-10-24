@@ -1,27 +1,104 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, tags %}
+{% from "_macros.html" import card, csrf, input_cls, status_badge %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-3">Applicants</h1>
-<div class="flex gap-2 text-sm mb-5">
-  {% for s in ['submitted', 'accepted', 'rejected'] %}
-    <a href="{{ url_for('staff.applications', status=s, role=role) }}" class="px-3 py-1 rounded {{ 'bg-brand-600 text-white' if s == status else 'border bg-white' }}">{{ s }}</a>
-  {% endfor %}
-  <span class="mx-2 text-slate-300">|</span>
-  {% for r in [None, 'mentee', 'mentor'] %}
-    <a href="{{ url_for('staff.applications', status=status, role=r) }}" class="px-3 py-1 rounded {{ 'bg-slate-800 text-white' if r == role else 'border bg-white' }}">{{ r or 'all' }}</a>
-  {% endfor %}
+<div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+  <h1 class="text-2xl font-semibold">Applicants</h1>
 </div>
+<div class="flex flex-wrap gap-2 text-sm mb-5">
+  {% for value, label in [('pending', 'Pending Approval'), ('all', 'All')] %}
+    <a data-search-filter-link href="{{ url_for('staff.applications', status=value, q=q or None) }}"
+       class="px-3 py-1 rounded {{ 'bg-brand-600 text-white' if value == status else 'border bg-white' }}">
+      {{ label }}
+    </a>
+  {% endfor %}
+  <input name="q" data-live-filter="staff-applicants" value="{{ q }}"
+         placeholder="Search name, role, or application status" class="{{ input_cls() }} max-w-xs ml-auto">
+  {% if pending_count %}
+  <form method="post" action="{{ url_for('staff.quick_accept_applications') }}"
+        onsubmit="return confirm('Warning: this will approve every application currently pending approval. Continue?')">
+    {{ csrf() }}
+    <button class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            title="Warning: approves all pending applications">
+      Quick accept all pending ({{ pending_count }})
+    </button>
+  </div>
+  {% endif %}
+</form>
 {% call card() %}
-<table class="w-full text-sm">
-  <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Role</th><th>Industry</th><th>Submitted</th></tr></thead>
-  {% for a in rows %}
-  <tr class="border-t">
-    <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.application', app_id=a.id) }}">{{ a.user.name }}</a></td>
-    <td>{{ a.user.role }}</td>
-    <td>{{ a.user.profile.industry or '—' }}</td>
-    <td>{{ a.submitted_at.strftime('%b %d') if a.submitted_at else '—' }}</td>
+<div class="overflow-x-auto">
+<table class="w-full text-sm" data-sortable-list="staff-applicants">
+  <thead class="text-left text-slate-500"><tr>
+    <th class="py-1"><button type="button" data-sort-key="name" class="hover:text-slate-900">Name</button></th>
+    <th><button type="button" data-sort-key="role" class="hover:text-slate-900">Role</button></th>
+    <th><button type="button" data-sort-key="application" class="hover:text-slate-900">Application</button></th>
+    <th><button type="button" data-sort-key="attendance_rate" class="hover:text-slate-900">Attendance_Rate</button></th>
+    <th><button type="button" data-sort-key="match" class="hover:text-slate-900">Match</button></th>
+    <th><button type="button" data-sort-key="submitted" class="hover:text-slate-900">Submitted</button></th>
+    <th><button type="button" data-sort-key="acceptance_status" class="hover:text-slate-900">Acceptance Status</button></th>
+  </tr></thead>
+  <tbody data-sort-body>
+  {% for d in rows %}
+  {% set u = d.user %}
+  {% set a = d.application %}
+  {% set active_matches = d.active %}
+  <tr class="border-t align-top" data-list-row
+      data-search="{{ (u.name ~ ' ' ~ u.email ~ ' ' ~ u.role ~ ' ' ~ (a.status if a else 'no application') ~ ' ' ~ (active_matches|map(attribute='status')|join(' ')))|lower }}"
+      data-sort-name="{{ u.name|lower }}"
+      data-sort-role="{{ u.role|lower }}"
+      data-sort-application="{{ a.status if a else '' }}"
+      data-sort-profile="{{ d.missing|length }}"
+      data-sort-agreements="{{ d.unsigned|length }}"
+      data-sort-attendance_rate="{{ d.attendance_rate.rstrip('%') if d.attendance_rate.endswith('%') else '-1' }}"
+      data-sort-match="{{ active_matches|length }}"
+      data-sort-submitted="{{ a.submitted_at.isoformat() if a and a.submitted_at else '' }}"
+      data-sort-acceptance_status="{{ {'submitted': 0, 'accepted': 1, 'rejected': 2, 'withdrawn': 3, 'draft': 4}.get(a.status, 5) if a else 6 }}"
+      data-sort-todo="{{ d.todo|length }}">
+    <td class="py-2">
+      <a class="text-brand-600" href="{{ url_for('staff.person', user_id=u.id) }}">{{ u.name }}</a>
+      <div class="text-xs text-slate-500">{{ u.email }}</div>
+    </td>
+    <td class="py-2 capitalize">{{ u.role }}</td>
+    <td class="py-2">
+      {% if a %}
+        {{ status_badge(a.status) }}
+        <a class="ml-1 text-brand-600" href="{{ url_for('staff.application', app_id=a.id) }}">View</a>
+      {% else %}
+        <span class="text-slate-500">Not started</span>
+      {% endif %}
+    </td>
+    <td class="py-2">{{ d.attendance_rate }}</td>
+    <td class="py-2">
+      {% for m in active_matches %}<div>{{ m.other(u).name }} {{ status_badge(m.status) }}</div>
+      {% else %}<span class="text-slate-500">—</span>{% endfor %}
+    </td>
+    <td class="py-2">{{ a.submitted_at.strftime('%b %d, %Y') if a and a.submitted_at else '—' }}</td>
+    <td class="py-2">
+      {% if a and a.status == 'submitted' %}
+      <div class="flex flex-wrap gap-2">
+        <form method="post" action="{{ url_for('staff.application', app_id=a.id) }}">
+          {{ csrf() }}
+          <button name="decision" value="accepted" class="rounded border border-emerald-600 bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Accept</button>
+        </form>
+        <form method="post" action="{{ url_for('staff.application', app_id=a.id) }}">
+          {{ csrf() }}
+          <button name="decision" value="rejected" class="rounded border border-red-600 bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700">Reject</button>
+        </form>
+      </div>
+      {% elif a and a.status == 'accepted' %}
+      <span class="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">Accepted</span>
+      {% elif a and a.status == 'rejected' %}
+      <span class="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-800">Rejected</span>
+      {% elif a %}
+      {{ status_badge(a.status) }}
+      {% else %}<span class="text-slate-500">—</span>{% endif %}
+    </td>
   </tr>
-  {% else %}<tr><td class="py-2 text-slate-500">None.</td></tr>{% endfor %}
+  {% else %}
+  <tr data-empty-state><td colspan="7" class="py-2 text-slate-500">No applicants or participants found.</td></tr>
+  {% endfor %}
+  {% if rows %}<tr data-no-results hidden><td colspan="7" class="py-2 text-slate-500">Nobody found.</td></tr>{% endif %}
+  </tbody>
 </table>
+</div>
 {% endcall %}
 {% endblock %}
