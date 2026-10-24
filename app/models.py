@@ -171,9 +171,6 @@ class Application(db.Model):
     status = db.Column(db.String(12), default="draft", nullable=False, index=True)
     answers = db.Column(db.JSON, default=dict, nullable=False)  # {question_key: text}
     submitted_at = db.Column(db.DateTime)
-    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    reviewed_at = db.Column(db.DateTime)
-    staff_notes = db.Column(db.Text, default="")
 
     user = db.relationship("User", back_populates="application", foreign_keys=[user_id])
     cohort = db.relationship("Cohort")

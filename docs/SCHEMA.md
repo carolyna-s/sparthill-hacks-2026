@@ -50,9 +50,8 @@ mean *what I want*; for mentors, *what I have/offer*.
 (`signup` → `matching` → `review` → `released` → `closed`), `signup_opens`, `signup_closes`,
 `review_deadline`, `confirm_days` (default 7), `matched_at`, `released_at`.
 
-**application**: one per user. `status` (`draft` → `submitted` → `accepted` | `rejected`;
-`withdrawn` if a mentee leaves after matching), `answers` (JSON), `submitted_at`,
-`reviewed_by_id`, `reviewed_at`, `staff_notes`.
+**application**: one per user. `status` (`draft` → `accepted`; `withdrawn` if a mentee leaves
+after matching; older records may retain `rejected`), `answers` (JSON), `submitted_at`.
 
 **agreement**: versioned agreement text. `title`, `version`, `body`, `audience` (`mentee` |
 `mentor` | `all`), `is_active`.
