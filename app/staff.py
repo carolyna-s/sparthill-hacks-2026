@@ -101,7 +101,7 @@ def applications():
 def quick_accept_applications():
     pending = db.session.query(Application).filter_by(status="submitted").all()
     if not pending:
-        flash("There are no pending applications to accept.", "error")
+        flash("There are no pending applications to approve.", "error")
         return redirect(url_for("staff.applications", status="pending"))
     now = utcnow()
     for application in pending:
@@ -111,7 +111,7 @@ def quick_accept_applications():
     record_change("applications_bulk_accepted",
                   f"Accepted all {len(pending)} applications that were pending approval.")
     db.session.commit()
-    flash(f"Accepted {len(pending)} pending application(s).", "ok")
+    flash(f"Approved {len(pending)} pending application(s).", "ok")
     return redirect(url_for("staff.applications", status="pending"))
 
 

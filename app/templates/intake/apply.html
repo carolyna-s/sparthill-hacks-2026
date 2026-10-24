@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, card, btn, status_badge %}
+{% from "_macros.html" import csrf, card, btn, application_status_badge %}
 {% set draft = application.status == 'draft' %}
 {% block content %}
 <div class="max-w-3xl mx-auto">
-<h1 class="text-2xl font-semibold mb-5">Your application {{ status_badge(application.status) }}</h1>
+<h1 class="text-2xl font-semibold mb-5">Your application {{ application_status_badge(application.status) }}</h1>
 
 {% if draft %}
 {% call card("Before you submit") %}

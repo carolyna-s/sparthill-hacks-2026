@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, csrf, input_cls, status_badge %}
+{% from "_macros.html" import card, csrf, input_cls, status_badge, application_status_badge %}
 {% block content %}
 <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
   <h1 class="text-2xl font-semibold">Applicants</h1>
@@ -19,7 +19,7 @@
     {{ csrf() }}
     <button class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
             title="Warning: approves all pending applications">
-      Quick accept all pending ({{ pending_count }})
+      Quick approve all pending ({{ pending_count }})
     </button>
   </div>
   {% endif %}
@@ -34,7 +34,7 @@
     <th><button type="button" data-sort-key="attendance_rate" class="hover:text-slate-900">Attendance_Rate</button></th>
     <th><button type="button" data-sort-key="match" class="hover:text-slate-900">Match</button></th>
     <th><button type="button" data-sort-key="submitted" class="hover:text-slate-900">Submitted</button></th>
-    <th><button type="button" data-sort-key="acceptance_status" class="hover:text-slate-900">Acceptance Status</button></th>
+    <th><button type="button" data-sort-key="acceptance_status" class="hover:text-slate-900">Approval Status</button></th>
   </tr></thead>
   <tbody data-sort-body>
   {% for d in rows %}
@@ -60,7 +60,7 @@
     <td class="py-2 capitalize">{{ u.role }}</td>
     <td class="py-2">
       {% if a %}
-        {{ status_badge(a.status) }}
+        {{ application_status_badge(a.status) }}
         <a class="ml-1 text-brand-600" href="{{ url_for('staff.application', app_id=a.id) }}">View</a>
       {% else %}
         <span class="text-slate-500">Not started</span>
@@ -77,7 +77,7 @@
       <div class="flex flex-wrap gap-2">
         <form method="post" action="{{ url_for('staff.application', app_id=a.id) }}">
           {{ csrf() }}
-          <button name="decision" value="accepted" class="rounded border border-emerald-600 bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Accept</button>
+          <button name="decision" value="accepted" class="rounded border border-emerald-600 bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700">Approve</button>
         </form>
         <form method="post" action="{{ url_for('staff.application', app_id=a.id) }}">
           {{ csrf() }}
@@ -85,7 +85,7 @@
         </form>
       </div>
       {% elif a and a.status == 'accepted' %}
-      <span class="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">Accepted</span>
+      <span class="rounded bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800">Approved</span>
       {% elif a and a.status == 'rejected' %}
       <span class="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-800">Rejected</span>
       {% elif a %}

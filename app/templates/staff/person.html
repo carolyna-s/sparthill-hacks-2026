@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import card, status_badge %}
+{% from "_macros.html" import card, status_badge, application_status_badge %}
 {% from "staff/_match.html" import profile_facts, denial with context %}
 {% set u = d.user %}
 {% block content %}
@@ -13,7 +13,7 @@
       <li>1. Profile {% if d.missing %}<span class="text-amber-700">(missing {{ d.missing|join(', ') }})</span>{% else %}✓{% endif %}</li>
       <li>2. Agreements {% if d.unsigned %}<span class="text-amber-700">({{ d.unsigned|length }} to sign)</span>{% else %}✓{% endif %}</li>
       <li>3. Application
-        {% if d.application %}{{ status_badge(d.application.status) }}
+        {% if d.application %}{{ application_status_badge(d.application.status) }}
           <a class="text-indigo-600 ml-1" href="{{ url_for('staff.application', app_id=d.application.id) }}">Review</a>
         {% else %}<span class="text-slate-500">not started</span>{% endif %}</li>
     </ol>

@@ -39,12 +39,22 @@
   class="text-sm font-medium rounded-lg px-3 py-1.5 {{ 'bg-brand-600 text-white hover:bg-brand-700' if kind == 'primary' else 'border hover:bg-slate-50' if kind == 'secondary' else 'bg-red-600 text-white hover:bg-red-700' }}">{{ label }}</button>
 {% endmacro %}
 
-{% macro status_badge(status) %}
+{% macro nav_link(label, endpoint, active_endpoints=[]) %}
+<a href="{{ url_for(endpoint) }}"
+   class="{{ 'font-bold text-brand-900' if request.endpoint in active_endpoints else 'text-slate-600' }} hover:text-brand-700"
+   {% if request.endpoint in active_endpoints %}aria-current="page"{% endif %}>{{ label }}</a>
+{% endmacro %}
+
+{% macro status_badge(status, label=None) %}
 {% set colors = {'draft': 'bg-slate-100', 'submitted': 'bg-amber-100 text-amber-800', 'accepted': 'bg-emerald-100 text-emerald-800',
                  'rejected': 'bg-red-100 text-red-800', 'proposed': 'bg-amber-100 text-amber-800',
                  'released': 'bg-sky-100 text-sky-800',
                  'approved': 'bg-emerald-100 text-emerald-800', 'ended': 'bg-slate-100'} %}
-<span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ 'awaiting confirmation' if status == 'released' else status }}</span>
+<span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ label or ('awaiting confirmation' if status == 'released' else status) }}</span>
+{% endmacro %}
+
+{% macro application_status_badge(status) %}
+{{ status_badge(status, {'accepted': 'Approved', 'rejected': 'Rejected'}.get(status)) }}
 {% endmacro %}
 
 {% macro input_cls() %}w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100{% endmacro %}
