@@ -18,8 +18,12 @@ def test_mentee_intake_flow(client):
     client.post("/register", data={"role": "mentee", "name": "New Person", "email": "new@x.org",
                                    "password": "longenough", "school": "State University"})
     user = db.session.query(User).filter_by(email="new@x.org").one()
+    blocked = client.get("/dashboard", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/2")
+    assert b"Please complete onboarding to access Dashboard" in blocked.data
     assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
-    assert client.get("/profile/3").headers["Location"].endswith("/profile")  # locked until step 2 is done
+    blocked = client.get("/profile/3", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/2")  # locked until step 2 is done
 
     resp = client.post("/profile/1", data={"name": "New Person", "email": "new@x.org", "school": "State University",
                                            "bio": "Hi", "linkedin_url": "https://www.linkedin.com/in/np"})
@@ -30,6 +34,10 @@ def test_mentee_intake_flow(client):
     assert resp.headers["Location"].endswith("/profile/3")
     assert user.profile.availability == ["Monday - night"]
 
+    blocked = client.get("/events", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/3")
+    assert b"Please complete onboarding to access Events" in blocked.data
+
     resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
                                            "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
     assert resp.headers["Location"].endswith("/profile/4")
@@ -38,12 +46,51 @@ def test_mentee_intake_flow(client):
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
 
+    blocked = client.get("/matches", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding to access Messages" in blocked.data
+    blocked = client.get("/profile", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding" not in blocked.data
+
+    resp = client.post("/profile/4", data={
+        "interests": "Product design",
+        "looking_for": "Interview practice",
+        "mentorship_style": "Clear communication",
+    })
+    assert resp.headers["Location"].endswith("/profile/4")  # career advice is required
+    blocked = client.get("/dashboard", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding to access Dashboard" in blocked.data
+    client.post("/logout")
+    login_response = client.post("/login", data={"email": "new@x.org", "password": "longenough"})
+    assert login_response.headers["Location"].endswith("/profile")
+    onboarding = client.get(login_response.headers["Location"], follow_redirects=True)
+    assert onboarding.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding" not in onboarding.data
+    blocked = client.get("/dashboard", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding to access Dashboard" in blocked.data
+
+    back = client.post("/profile/4", data={
+        "nav": "back",
+        "interests": "Product design",
+        "looking_for": "Interview practice",
+        "mentorship_style": "Clear communication",
+    }, follow_redirects=True)
+    assert back.request.path.endswith("/profile/3")
+    blocked = client.get("/dashboard", follow_redirects=True)
+    assert blocked.request.path.endswith("/profile/3")
+    assert b"Please complete onboarding to access Dashboard" in blocked.data
+    assert client.post("/profile/3", data={}).headers["Location"].endswith("/profile/4")
+
     profile_page = client.get("/profile/4")
     assert b"What subjects are you interested in learning more about?" in profile_page.data
     assert b"What communication or mentorship style helps you learn most effectively?" in profile_page.data
     assert b"What type of advice would you like to receive as you begin or develop your career?" in profile_page.data
 
     resp = client.post("/profile/4", data={
+        "interests": "Product design",
         "looking_for": "Interview practice",
         "mentorship_style": "Clear communication",
         "career_advice": "Actionable career guidance",
@@ -54,6 +101,7 @@ def test_mentee_intake_flow(client):
         "mentorship_style": "Clear communication",
         "career_advice": "Actionable career guidance",
     }
+    assert client.get("/dashboard").headers["Location"].endswith("/agreements")
 
     client.post("/apply", data={"action": "submit"})
     assert user.application.status == "draft"  # agreement not signed yet
