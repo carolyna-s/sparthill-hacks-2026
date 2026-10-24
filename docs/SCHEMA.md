@@ -145,4 +145,4 @@ so failed ones are retried on the next run.
 
 **email_log**: every outbound email (`app/notify.py`). `user_id` (null if not a user),
 `to_email`, `subject`, `body`, `key` (same as `reminder_log.key`, e.g. `message:42`), `backend`
-(`console` | `ses`), `status` (`logged` = console only, `sent`, `failed`), `error`, `created_at`.
+(`console` | `smtp` | `ses`), `status` (`logged` = console only, `sent`, `failed`), `error`, `created_at`.

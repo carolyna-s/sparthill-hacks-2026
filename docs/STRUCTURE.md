@@ -56,7 +56,7 @@ go with them.
 | `auth.py` | `/register`, `/login`, `/logout` | Email and password accounts, plus the `role_required(...)` decorator that limits a page to certain roles | `auth/` |
 | `intake.py` | `/profile/<step>`, `/account`, `/apply`, `/agreements` | The onboarding gate (`require_profile_setup` keeps mentees and mentors on their sign-up step until it's done), the 4-step sign-up form (`STEPS`; steps 1-2 required, see `REQUIRED`), account settings, application submit (questions in `Personality_Questions_Data`), and signing digital agreements | `intake/`, `account/` |
 | `program.py` | `/modules`, `/submissions/<id>/file`, `/messages/<id>`, `/meetings/<id>`, `/feedback` | Modules with pre-work and post-work uploads (post-work opens once the session starts, see `Event.is_open`), attendance check-ins, messages between a mentor and mentee, mentor-scheduled meetings, and the `/feedback` ratings endpoint (no page links to it right now) | `program/` |
-| `staff.py` | `/staff/...` | Staff-only pages (admins can open them too): reviewing applicants, people search with each participant's dashboard, proposing and deciding matches, creating modules, and reports | `staff/` |
+| `staff.py` | `/staff/...` | Staff-only pages (admins can open them too): the applicant list, people search with each participant's dashboard, proposing and deciding matches, creating modules, and reports | `staff/` |
 | `admin.py` | `/admin/...` | Admin-only (`backend` role) pages: account metrics, the user audit with activate/deactivate, creating staff and admin accounts, account reports, and the admin's own profile | `admin/` |
 
 ### Core logic (no routes)

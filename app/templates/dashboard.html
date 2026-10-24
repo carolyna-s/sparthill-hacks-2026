@@ -74,7 +74,7 @@
 
     {% if application and application.status != 'draft' %}
     {% call card("Submitted " ~ ("Mentor" if current_user.role == "mentor" else "Mentee") ~ " Application") %}
-      <p class="text-sm text-slate-600 mb-3">View or edit your submitted answers without changing your application status.</p>
+      <p class="text-sm text-slate-600 mb-3">View your submitted answers.</p>
       <a href="{{ url_for('main.update_application') }}"
          class="text-sm font-medium text-brand-700 hover:underline">View Submitted Application →</a>
     {% endcall %}

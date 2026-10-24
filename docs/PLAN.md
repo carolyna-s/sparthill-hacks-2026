@@ -24,7 +24,7 @@ much of the cycle automated as possible. Staff keep the final say on every match
 | --- | --- | --- |
 | **Mentee** | Students | Sign up, fill in profile, apply, sign agreements, see resources, and, once matched, message their mentor and do program work. **No say in who they're matched with.** |
 | **Mentor** | Professionals / alumni | Same as mentee, minus resources. **No say in who they're matched with.** |
-| **Staff** | Program team | Review applicants, see all proposed matches with % match, **approve or deny** (final say), see mentor load, run events, see reports, manage the resources tab |
+| **Staff** | Program team | View applicants, see all proposed matches with % match, **approve or deny** (final say), see mentor load, run events, see reports, manage the resources tab |
 | **Backend** | Technical admins | Everything staff can, plus: matching weights and settings, taxonomy lists (majors, pathways, clubs, groups), apply or reject AI-suggested weight changes, cohort dates, user and role management, email templates, logs and audit trail |
 
 Mentees, mentors, and staff use the app day to day. Backend is the "keys to the machine" role,
@@ -43,7 +43,7 @@ user, never self-registered.
 
 | Phase | What happens | Automated? |
 | --- | --- | --- |
-| **Sign-up open** (1 month) | Anyone registers as mentor or mentee and completes profile, application, and agreements. A complete application is **auto-accepted**; staff can still pull one out | Yes |
+| **Sign-up open** (1 month) | Anyone registers as mentor or mentee and completes profile, application, and agreements. A complete application is **auto-accepted** on submit; there is no staff approval step | Yes |
 | **Auto-match** | At the close date, a scheduled job embeds any new soft answers, runs the 4-stage pipeline (§4), and assigns pairs within capacity. Staff get an email: "N pairs ready for review" | Yes |
 | **Staff review** | Staff see every proposed pair with its % match and approve or deny each one. A deny **automatically re-matches** that mentee with the next-best candidate, which appears back in the queue | Re-match is automatic. Decisions are human |
 | **Release** | When every pair is decided (or the review deadline passes, with a reminder to staff first), approved pairs get **intro emails automatically** | Yes |
@@ -112,8 +112,9 @@ to the other party, and visible to staff only on the review screen.
 ### 4.2 Stage 1: hard filters
 
 A pair is dropped before scoring if any of these hold: mentor at capacity · either side not
-accepted for this cohort · mentee requires a shared language and there isn't one · pair is in
-`match_exclusion` (previously denied, or withdrawn as "not a good fit").
+accepted for this cohort · no shared availability slot · pair is in
+`match_exclusion` (previously denied, or withdrawn as "not a good fit"). Language is not a
+hard filter (everyone is assumed to get by in English); see the Languages row below.
 
 ### 4.3 Stage 2: structured score
 
@@ -125,7 +126,7 @@ Per-feature similarity, each 0–1:
 | Concentration | 1.0 same · 0 |
 | Pathway, interests, goals | share of the mentee's selections the mentor covers |
 | Years of experience | 1.0 when the mentor is 3–10 years ahead (settable), falling linearly to 0 at 0 and at 20 years ahead |
-| Languages | 1.0 if any shared (when it's not already a hard filter) |
+| Languages | bonus only: 1.0 if a language other than English is shared; otherwise left out of the score, weight included |
 | Organization | 1.0 if the mentor's organization is one of the mentee's targets |
 | Clubs | 1.0 shared club · 0.5 same club category · 0 |
 | Student groups | share of the mentee's opted-in groups the mentor shares |
@@ -441,6 +442,6 @@ After M1, M2 and M6 can run in parallel. M3 builds on M2. M4 and M5 can run in p
 - **Unmatched mentees.** If a mentee runs out of candidates after denies, do they wait for the
   next cohort, or can staff hand-pick a mentor (overriding capacity)?
 - **Deny permanence.** Is a denied pair excluded for this cohort only, or forever?
-- **Auto-accept.** Is auto-accepting every complete application OK, or do some need manual
-  review (e.g. mentors need vetting)?
+- **Auto-accept.** Decided: every complete application is accepted on submit, and staff no
+  longer review applications. Revisit if mentors need vetting.
 - **Resume retention.** How long are resumes kept, and can users delete them?

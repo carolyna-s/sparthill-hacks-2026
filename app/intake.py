@@ -12,7 +12,7 @@ from .auth import change_password, role_required
 from .extensions import db
 from .models import Agreement, AgreementSignature, Application, Cohort, User, utcnow
 from .program import unsigned_agreements
-from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY
+from .taxonomy import DAYS, INDUSTRIES, PERIODS, TAXONOMY, with_base_language
 
 bp = Blueprint("intake", __name__)
 
@@ -81,7 +81,6 @@ REQUIRED = [
     (1, lambda u: u.email, "your email"),
     (1, lambda u: u.profile.school, "your school"),
     (2, lambda u: u.profile.availability, "at least one time you're available"),
-    (2, lambda u: u.profile.languages, "at least one language"),
 ]
 
 # Tag pickers on each step.
@@ -309,6 +308,8 @@ def _save_tags(user: User, step: int) -> None:
     p = user.profile
     for dim in STEP_TAGS[step]:
         setattr(p, dim, [t for t in request.form.getlist(dim) if t in TAXONOMY[dim]])
+    if "languages" in STEP_TAGS[step]:
+        p.languages = with_base_language(p.languages)
     if p.linkedin_data:  # suggestions on this step have been seen; don't re-add ones they removed
         p.linkedin_data = {**p.linkedin_data, "reviewed": sorted({*p.linkedin_data.get("reviewed", []), step})}
 
@@ -351,7 +352,6 @@ def _render_step(step: int):
     parsed = {} if step in data.get("reviewed", []) else data  # LinkedIn suggestions, pre-selected
     suggested_tags = parsed.get("tags", {})
     sel = {dim: list(dict.fromkeys(getattr(p, dim) + suggested_tags.get(dim, []))) for dim in TAXONOMY}
-    sel["languages"] = sel["languages"] or ["English"]  # the usual answer; one click to change
     suggested = {dim: set(v) - set(getattr(p, dim)) for dim, v in suggested_tags.items()}
     suggested["industry"] = bool(parsed.get("industry")) and not p.industry
     return render_template("intake/profile.html", p=p, step=step, steps=STEPS,
