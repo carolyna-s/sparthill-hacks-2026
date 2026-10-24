@@ -34,9 +34,9 @@ def test_mentee_intake_flow(client):
     assert resp.headers["Location"].endswith("/profile/3")
     assert user.profile.availability == ["Monday - night"]
 
-    blocked = client.get("/events", follow_redirects=True)
+    blocked = client.get("/modules", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/3")
-    assert b"Please complete onboarding to access Events" in blocked.data
+    assert b"Please complete onboarding to access Modules" in blocked.data
 
     resp = client.post("/profile/3", data={"goals": ["switch careers", "not-a-real-tag"], "goals_other": "write a book",
                                            "industry": "  software   DEVELOPMENT ", "prefers_alumni": "1"})
@@ -46,7 +46,7 @@ def test_mentee_intake_flow(client):
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
 
-    blocked = client.get("/matches", follow_redirects=True)
+    blocked = client.get("/messages/", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/4")
     assert b"Please complete onboarding to access Messages" in blocked.data
     blocked = client.get("/profile", follow_redirects=True)
