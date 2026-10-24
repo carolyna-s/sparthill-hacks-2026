@@ -36,8 +36,6 @@ These are created on your machine and are listed in `.gitignore`, so never commi
 | --- | --- |
 | `.env`, `.env.*` | Your local settings and secrets (`.env.example` is the exception and is committed) |
 | `.venv/` | Your Python virtual environment |
-| `instance/` | Local SQLite database (`mentorship.db`), created on first run |
-| `data/` | Local file uploads, used when `S3_BUCKET` is empty |
 | `__pycache__/`, `.pytest_cache/`, `.coverage`, `htmlcov/` | Python and test caches |
 | `.vscode/`, `.idea/`, `.DS_Store`, `*.log` | Editor, OS, and log files |
 
@@ -75,13 +73,13 @@ go with them.
 
 ### Infrastructure adapters
 
-These files switch between a local and an AWS implementation based on settings in `.env`.
+These files connect the app to Supabase and AWS based on settings in `.env`.
 
 | File | Locally | In production |
 | --- | --- | --- |
-| `config.py` | Reads `.env` and uses SQLite when `DATABASE_URL` is empty | Postgres (Supabase) |
-| `storage.py` | Saves uploads to `./data/uploads` | S3, when `S3_BUCKET` is set |
-| `notify.py` | Prints emails to the console | Sends through Amazon SES, when `EMAIL_BACKEND=ses` |
+| `config.py` | Reads `.env`; `DATABASE_URL` must be Supabase (tests swap in SQLite) | (same) |
+| `storage.py` | Supabase Storage bucket (`./data/uploads` under pytest only) | (same) |
+| `notify.py` | Prints emails to the console; logs each to `email_log` | Sends through Amazon SES, when `EMAIL_BACKEND=ses` |
 | `extensions.py` | Shared `db`, `migrate`, `login_manager`, and `csrf` objects, imported everywhere so imports don't loop | (same) |
 
 ### Other

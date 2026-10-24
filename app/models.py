@@ -1,7 +1,8 @@
 """Database tables. See docs/SCHEMA.md for what each one is for.
 
-Works on SQLite (local, tests) and Postgres (Supabase). List-valued fields use JSON, which
-both support; embeddings use `Embedding`, which is pgvector on Postgres and JSON on SQLite.
+The app runs on Supabase Postgres; tests use a throwaway SQLite file. List-valued fields use
+JSON, which both support; embeddings use `Embedding`, which is pgvector on Postgres and JSON on
+SQLite.
 
 Matching inputs come in two kinds (docs/PLAN.md §4):
 - hard questions: dropdown / multiple-choice answers, stored as typed Profile columns, used
@@ -303,7 +304,7 @@ class Submission(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     kind = db.Column(db.String(10), nullable=False)
     body = db.Column(db.Text, default="")
-    file_key = db.Column(db.String(500))  # S3 key or local path under UPLOAD_DIR
+    file_key = db.Column(db.String(500))  # object key in the Supabase Storage bucket
     file_name = db.Column(db.String(255))
     submitted_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
@@ -365,6 +366,23 @@ class ReminderLog(db.Model):
     sent_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
     __table_args__ = (db.UniqueConstraint("user_id", "key"),)
+
+
+class EmailLog(db.Model):
+    """One row per outbound email, whether it was only logged, sent, or failed."""
+
+    STATUSES = ("logged", "sent", "failed")  # logged = console backend, nothing left the server
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), index=True)  # null for non-users
+    to_email = db.Column(db.String(255), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    key = db.Column(db.String(120))  # what it was about, e.g. "message:42"; matches ReminderLog.key
+    backend = db.Column(db.String(10), nullable=False)  # console | ses
+    status = db.Column(db.String(10), nullable=False)
+    error = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
 
 
 # --- configuration (edited by backend users) -------------------------------

@@ -14,6 +14,8 @@ def create_app(overrides: dict | None = None) -> Flask:
     app.config.from_object(Config)
     if overrides:
         app.config.update(overrides)
+    if not app.testing and not app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+        raise RuntimeError("DATABASE_URL must be the Supabase session-pooler URI (see .env.example)")
 
     db.init_app(app)
     migrate.init_app(app, db)
