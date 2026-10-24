@@ -51,8 +51,8 @@
           {{ nav_link("Modules", "program.modules", ["program.modules", "program.module", "staff.new_event"]) }}
           {{ nav_link("Reports", "staff.reports", ["staff.reports", "staff.event_attendance"]) }}
         {% else %}
-          {{ nav_link("Dashboard", "main.dashboard", ["main.dashboard", "main.update_application", "main.match_confirmation"]) }}
           {% if profile_setup_complete %}
+            {{ nav_link("Dashboard", "main.dashboard", ["main.dashboard", "main.update_application", "main.match_confirmation"]) }}
             {{ nav_link("Modules", "program.modules", ["program.modules", "program.module"]) }}
             {% if messages_locked %}
               <a href="{{ url_for('program.inbox') }}" title="Available once your mentorship is assigned and approved"
