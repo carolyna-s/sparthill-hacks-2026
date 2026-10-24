@@ -140,6 +140,15 @@ def profile_setup_complete(user: User) -> bool:
     return not missing_fields(user) and not missing_setup_answers(user)
 
 
+@bp.app_context_processor
+def _profile_navigation():
+    setup_complete = (
+        current_user.is_authenticated
+        and profile_setup_complete(current_user)
+    )
+    return {"profile_setup_complete": setup_complete}
+
+
 def _onboarding_session_key(user: User) -> str:
     return f"onboarding_step_{user.id}"
 

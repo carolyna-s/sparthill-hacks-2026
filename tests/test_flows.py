@@ -15,6 +15,7 @@ from .conftest import login
 
 def test_healthz(client):
     assert client.get("/healthz").json == {"ok": True}
+    assert client.get("/health").json == {"ok": True}
 
 
 def test_account_profile_requires_password_and_keeps_identity_read_only(client):
@@ -151,6 +152,8 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
+    assert b'href="/modules"' not in blocked.data
+    assert b'href="/messages/"' not in blocked.data
     assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
     blocked = client.get("/profile/3", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")  # locked until step 2 is done
@@ -316,6 +319,33 @@ def test_staff_pages_are_staff_only(client):
     overview = client.get("/staff/").data
     assert b"Dashboard" in overview
     assert b"Staff Overview" in overview
+
+
+def test_messages_locked_until_match_is_approved(client):
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(role="mentor").first()
+    login(client, jordan.email)
+    page = client.get("/messages/")
+    assert page.status_code == 200 and b"Messages aren't available yet" in page.data
+    assert b"You don't have a mentor yet" in page.data
+    assert b"locked until your mentorship is approved" in client.get("/dashboard", follow_redirects=True).data
+
+    m = Match(mentee_id=jordan.id, mentor_id=mentor.id, score=80, score_breakdown={})
+    db.session.add(m)
+    db.session.commit()
+    assert b"Staff are reviewing a mentor for you" in client.get("/messages/").data
+    assert mentor.name.encode() not in client.get(f"/messages/{m.id}").data  # proposal isn't revealed
+
+    m.status = "released"
+    db.session.commit()
+    page = client.get(f"/messages/{m.id}").data
+    assert b"awaiting" in page and b"Confirm your match" in page
+
+    m.status = "approved"
+    db.session.commit()
+    resp = client.get("/messages/")
+    assert resp.headers["Location"].endswith(f"/messages/{m.id}")
+    assert b"locked until your mentorship is approved" not in client.get(f"/messages/{m.id}").data
 
 
 def test_review_match_and_message(client):
