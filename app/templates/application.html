@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, csrf, field, input_cls, status_badge %}
+{% set p = current_user.profile %}
+{% set editing = editing|default(false) %}
+{% set control_cls = input_cls() ~ (' bg-slate-100 text-slate-500 cursor-not-allowed' if not editing else '') %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <div class="flex items-center justify-between gap-3 mb-5">
+    <h1 class="text-2xl font-semibold">Submitted {{ "Mentor" if current_user.role == "mentor" else "Mentee" }} Application</h1>
+    {{ status_badge(application.status) }}
+  </div>
+
+  {% call card("Application information") %}
+  <form method="post" action="{{ url_for('main.update_application') }}" id="application-editor">
+    {{ csrf() }}
+    <div class="grid sm:grid-cols-2 gap-x-3">
+      {% call field("Username") %}
+        <input value="{{ current_user.name }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("Email") %}
+        <input value="{{ current_user.email }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("School") %}
+        <input value="{{ p.school or '' }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("Company" if current_user.role == "mentor" else "Organization") %}
+        <input name="organization" value="{{ p.organization or '' }}" maxlength="200" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+      {% endcall %}
+      {% call field("Current role") %}
+        <input name="headline" value="{{ p.headline or '' }}" maxlength="200" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+      {% endcall %}
+    </div>
+    {% call field("Short bio") %}
+      <textarea name="bio" rows="4" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">{{ p.bio or '' }}</textarea>
+    {% endcall %}
+    {% call field("LinkedIn") %}
+      <input name="linkedin_url" type="url" value="{{ p.linkedin_url or '' }}" maxlength="300" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+    {% endcall %}
+
+    <h3 class="font-medium text-slate-800 mt-5 mb-3">Availability and language</h3>
+    <fieldset class="mb-5">
+      <legend class="text-sm font-medium mb-2">When are you usually free? <span class="font-normal text-slate-500">· pick all that apply</span></legend>
+      <div class="grid grid-cols-[auto_repeat(4,minmax(0,1fr))] gap-1.5 sm:gap-2 text-sm items-center max-w-xl">
+        <span></span>
+        {% for period in PERIODS %}
+          <span class="text-center leading-tight">
+            <span class="text-xs font-medium block">{{ period|capitalize }}</span>
+            <span class="text-[11px] text-slate-500 hidden sm:block">{{ {"morning": "6am–12pm", "afternoon": "12–5pm", "evening": "5–9pm", "night": "after 9pm"}[period] }}</span>
+          </span>
+        {% endfor %}
+        {% for day in DAYS %}
+          <span class="pr-2"><span class="sm:hidden">{{ day[:3] }}</span><span class="hidden sm:inline">{{ day }}</span></span>
+          {% for period in PERIODS %}
+            {% set slot = day ~ ' - ' ~ period %}
+            <label data-choice-label
+                   data-edit-class="border rounded py-1.5 text-center cursor-pointer text-transparent hover:bg-slate-50 has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400"
+                   class="{{ 'border rounded py-1.5 text-center cursor-pointer text-transparent hover:bg-slate-50 has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-400' if editing else 'border rounded py-1.5 text-center bg-slate-300 text-slate-700 border-slate-300' if slot in p.availability else 'border rounded py-1.5 text-center text-transparent border-slate-200' }}">
+              <input type="checkbox" name="availability" value="{{ slot }}" data-editable {% if not editing %}disabled{% endif %}
+                     class="sr-only" aria-label="{{ day }} {{ period }}" {{ 'checked' if slot in p.availability }}>✓
+            </label>
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="mb-4">
+      <legend class="text-sm font-medium mb-2">Languages you're comfortable meeting in</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for value in taxonomy.languages %}
+        <label data-choice-label
+               data-edit-class="text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600"
+               class="{{ 'text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600' if editing else 'text-sm border rounded-full px-3 py-1 bg-slate-300 text-slate-700 border-slate-300' if value in p.languages else 'text-sm border rounded-full px-3 py-1 bg-slate-100 text-slate-400 border-slate-200' }}">
+          <input type="checkbox" name="languages" value="{{ value }}" data-editable {% if not editing %}disabled{% endif %} class="sr-only" {{ 'checked' if value in p.languages }}>{{ value }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% if current_user.role == "mentor" %}
+    {% call field("Mentee capacity") %}
+      <select name="capacity" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+        {% for value in range(1, 6) %}<option value="{{ value }}" {{ 'selected' if p.capacity == value }}>{{ value }}</option>{% endfor %}
+      </select>
+    {% endcall %}
+    {% endif %}
+
+    <h3 class="font-medium text-slate-800 mt-5 mb-3">Preferences</h3>
+    {% call field("Industry") %}
+      <input name="industry" value="{{ p.industry or '' }}" maxlength="120" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+    {% endcall %}
+    {% for dim, label in [
+      ("development_areas", "Skills you can teach" if current_user.role == "mentor" else "Skills you want to learn"),
+      ("goals", "Goals you can help with" if current_user.role == "mentor" else "Your goals"),
+      ("education_paths", "Educational path")
+    ] %}
+    <fieldset class="mb-4">
+      <legend class="text-sm font-medium mb-2">{{ label }}</legend>
+      <div class="flex flex-wrap gap-2">
+        {% for value in taxonomy[dim] %}
+        <label data-choice-label
+               data-edit-class="text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600"
+               class="{{ 'text-sm border rounded-full px-3 py-1 cursor-pointer has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600' if editing else 'text-sm border rounded-full px-3 py-1 bg-slate-300 text-slate-700 border-slate-300' if value in p|attr(dim) else 'text-sm border rounded-full px-3 py-1 bg-slate-100 text-slate-400 border-slate-200' }}">
+          <input type="checkbox" name="{{ dim }}" value="{{ value }}" data-editable {% if not editing %}disabled{% endif %} class="sr-only" {{ 'checked' if value in p|attr(dim) }}>{{ value }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+    {% call field("Other goals") %}
+      <input name="goals_other" value="{{ p.goals_other or '' }}" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
+    {% endcall %}
+    {% if current_user.role == "mentee" %}
+      <label class="flex items-center gap-2 text-sm mb-4">
+        <input type="checkbox" name="prefers_alumni" value="1" data-editable {% if not editing %}disabled{% endif %} {{ 'checked' if p.prefers_alumni }}>
+        Prefer a mentor who attended {{ p.school or "my school" }}
+      </label>
+    {% endif %}
+
+    <h3 class="font-medium text-slate-800 mt-5 mb-3">In your own words</h3>
+    {% for key, label in Industry_Relevant_Prompt_Data[current_user.role].items() %}
+      {% call field(label, required=True) %}
+        <textarea name="{{ key }}" rows="3" required data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">{{ p|attr(key) or '' }}</textarea>
+      {% endcall %}
+    {% endfor %}
+    {% for key, label in Personality_Questions_Data[current_user.role] %}
+      {% call field(label, required=True) %}
+        <textarea name="{{ key }}" rows="3" required data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">{{ application.answers.get(key, '') }}</textarea>
+      {% endcall %}
+    {% endfor %}
+
+    {% if p.resume_file_name %}
+      <p class="text-sm text-slate-600 mb-4">LinkedIn PDF imported: {{ p.resume_file_name }}</p>
+    {% endif %}
+    <p class="text-sm text-slate-500 mb-4">Editing your answers will not change your application status.</p>
+    <div class="flex justify-between">
+      <a href="{{ url_for('main.dashboard') }}" class="text-sm font-medium rounded-lg px-3 py-1.5 border hover:bg-slate-50">Back to Dashboard</a>
+      <div class="flex gap-2">
+        <button type="button" id="edit-application" {% if editing %}hidden{% endif %}
+                class="text-sm font-medium rounded-lg px-3 py-1.5 border hover:bg-slate-50">Edit Application</button>
+        <button type="submit" id="save-application" {% if not editing %}hidden{% endif %}
+                class="text-sm font-medium rounded-lg px-3 py-1.5 bg-brand-600 text-white hover:bg-brand-700">Save Changes</button>
+      </div>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+<script>
+  document.getElementById("edit-application").addEventListener("click", () => {
+    document.querySelectorAll("#application-editor [data-editable]").forEach((field) => {
+      field.disabled = false;
+      field.classList.remove("bg-slate-100", "text-slate-500", "cursor-not-allowed");
+    });
+    document.querySelectorAll("#application-editor [data-choice-label]").forEach((label) => {
+      label.className = label.dataset.editClass;
+    });
+    document.getElementById("edit-application").hidden = true;
+    document.getElementById("save-application").hidden = false;
+  });
+</script>
+{% endblock %}

@@ -37,6 +37,14 @@
       {% endfor %}
     {% endcall %}
 
+    {% if application and application.status != 'draft' %}
+    {% call card("Submitted " ~ ("Mentor" if current_user.role == "mentor" else "Mentee") ~ " Application") %}
+      <p class="text-sm text-slate-600 mb-3">View or edit your submitted answers without changing your application status.</p>
+      <a href="{{ url_for('main.update_application') }}"
+         class="text-sm font-medium text-brand-700 hover:underline">View Submitted Application →</a>
+    {% endcall %}
+    {% endif %}
+
     {% call card("To do") %}
       {% for e, kind in todo %}
         <a href="{{ url_for('program.event', event_id=e.id) }}" class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 -mx-3 text-sm hover:bg-slate-50">

@@ -14,6 +14,133 @@ def test_healthz(client):
     assert client.get("/healthz").json == {"ok": True}
 
 
+def test_account_profile_requires_password_and_keeps_identity_read_only(client):
+    login(client, "jordan.kim@example.org")
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    page = client.get("/account")
+    assert page.status_code == 200
+    assert b'name="organization"' in page.data
+    assert b'name="headline"' in page.data
+    assert b'id="password-confirmation"' in page.data
+    assert b'id="save-profile"' in page.data
+    assert b'value="Jordan Kim" readonly' in page.data
+    assert b'value="jordan.kim@example.org" readonly' in page.data
+
+    response = client.post("/account", data={
+        "action": "profile", "organization": "New Company", "headline": "New Role", "bio": "Updated bio",
+        "linkedin_url": "https://www.linkedin.com/in/jordan", "current_password": "wrong",
+        "name": "Changed Name", "email": "changed@example.org", "school": "Changed School",
+    }, follow_redirects=True)
+    assert b"That password is incorrect" in response.data
+    assert b"passwordDialog.showModal()" in response.data
+    assert user.profile.organization != "New Company"
+    assert user.name == "Jordan Kim"
+    assert user.email == "jordan.kim@example.org"
+
+    response = client.post("/account", data={
+        "action": "profile", "organization": "New Company", "headline": "New Role", "bio": "Updated bio",
+        "linkedin_url": "https://[", "current_password": "password123",
+    }, follow_redirects=True)
+    assert b"Enter a valid LinkedIn URL" in response.data
+    assert user.profile.organization != "New Company"
+
+    response = client.post("/account", data={
+        "action": "profile", "organization": "New Company", "headline": "New Role", "bio": "Updated bio",
+        "linkedin_url": "https://www.linkedin.com/in/jordan", "current_password": "password123",
+        "name": "Changed Name", "email": "changed@example.org", "school": "Changed School",
+    }, follow_redirects=True)
+    assert b"Profile changes saved." in response.data
+    assert (user.profile.organization, user.profile.headline, user.profile.bio) == (
+        "New Company", "New Role", "Updated bio")
+    assert user.profile.linkedin_url == "https://www.linkedin.com/in/jordan"
+    assert user.name == "Jordan Kim"
+    assert user.email == "jordan.kim@example.org"
+    assert user.profile.school != "Changed School"
+
+
+def test_account_password_change_validates_and_updates(client):
+    login(client, "jordan.kim@example.org")
+    response = client.post("/account", data={
+        "action": "password", "current_password": "wrong", "new_password": "newpassword",
+        "confirm_password": "newpassword",
+    }, follow_redirects=True)
+    assert b"Your current password is incorrect." in response.data
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    assert user.check_password("password123")
+
+    response = client.post("/account", data={
+        "action": "password", "current_password": "password123", "new_password": "newpassword",
+        "confirm_password": "different",
+    }, follow_redirects=True)
+    assert b"New password and confirmation do not match." in response.data
+    response = client.post("/account", data={
+        "action": "password", "current_password": "password123", "new_password": "short",
+        "confirm_password": "short",
+    }, follow_redirects=True)
+    assert b"New password must be at least 8 characters." in response.data
+    response = client.post("/account", data={
+        "action": "password", "current_password": "password123", "new_password": "newpassword",
+        "confirm_password": "newpassword",
+    }, follow_redirects=True)
+    assert b"Password changed successfully." in response.data
+    assert user.check_password("newpassword")
+
+
+def test_dashboard_application_edits_answers_without_changing_status(client):
+    login(client, "jordan.kim@example.org")
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    app_row = user.application
+    original_status = app_row.status
+    original_submitted_at = app_row.submitted_at
+    page = client.get("/dashboard")
+    assert b"Submitted Mentee Application" in page.data
+    assert b'href="/dashboard/application"' in page.data
+    assert b'name="mentorship_style"' not in page.data
+    page = client.get("/dashboard/application")
+    assert b"Submitted Mentee Application" in page.data
+    assert b'value="Jordan Kim" readonly' in page.data
+    assert b'name="organization"' in page.data
+    assert b'name="availability"' in page.data
+    assert b'name="languages"' in page.data
+    assert b'name="industry"' in page.data
+    assert b'name="development_areas"' in page.data
+    assert b'name="goals"' in page.data
+    assert b'name="education_paths"' in page.data
+    assert b'name="interests"' in page.data
+    assert b'name="mentorship_style"' in page.data
+    assert b'name="career_advice"' in page.data
+    assert b'name="organization" value="" maxlength="200" data-editable disabled' in page.data
+    assert b"grid-cols-[auto_repeat(4,minmax(0,1fr))]" in page.data
+    assert b"6am\xe2\x80\x9312pm" in page.data
+    assert b"Monday" in page.data and b"Night" in page.data
+
+    response = client.post("/dashboard/application", data={
+        "organization": "Updated Org", "headline": "Updated role", "bio": "Updated bio",
+        "linkedin_url": "https://example.org/profile", "availability": ["Monday - night"],
+        "languages": ["Spanish"], "industry": "Software Development",
+        "development_areas": ["leadership"], "goals": ["land first job"],
+        "goals_other": "Start a community", "education_paths": ["graduate degree"],
+        "interests": "Updated interests", "prefers_alumni": "1",
+        "mentorship_style": "Updated style", "career_advice": "Updated advice",
+        "name": "Changed Name", "email": "changed@example.org", "school": "Changed School",
+    }, follow_redirects=True)
+    assert b"Application changes saved." in response.data
+    assert response.request.path == "/dashboard/application"
+    assert app_row.answers == {
+        "mentorship_style": "Updated style", "career_advice": "Updated advice",
+    }
+    assert user.profile.organization == "Updated Org"
+    assert user.profile.availability == ["Monday - night"]
+    assert user.profile.languages == ["Spanish"]
+    assert user.profile.industry == "Software Development"
+    assert user.profile.interests == "Updated interests"
+    assert user.profile.prefers_alumni
+    assert app_row.status == original_status
+    assert app_row.submitted_at == original_submitted_at
+    assert user.name == "Jordan Kim"
+    assert user.email == "jordan.kim@example.org"
+
+
 def test_mentee_intake_flow(client):
     client.post("/register", data={"role": "mentee", "name": "New Person", "email": "new@x.org",
                                    "password": "longenough", "school": "State University"})

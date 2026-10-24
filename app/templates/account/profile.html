@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, csrf, field, input_cls %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <h1 class="text-2xl font-semibold mb-5">Profile</h1>
+
+  {% call card("Account information") %}
+  <form method="post" id="profile-form">
+    {{ csrf() }}
+    <input type="hidden" name="action" value="profile">
+    <div class="grid sm:grid-cols-2 gap-x-3">
+      {% call field("Username") %}
+        <input value="{{ current_user.name }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("Email") %}
+        <input value="{{ current_user.email }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("School") %}
+        <input value="{{ profile.school or '' }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+      {% endcall %}
+      {% call field("Company") %}
+        <input name="organization" value="{{ profile_values.organization }}" maxlength="200" class="{{ input_cls() }}">
+      {% endcall %}
+      {% call field("Current Role") %}
+        <input name="headline" value="{{ profile_values.headline }}" maxlength="200" class="{{ input_cls() }}">
+      {% endcall %}
+      {% call field("LinkedIn") %}
+        <input name="linkedin_url" type="url" value="{{ profile_values.linkedin_url }}" maxlength="300" class="{{ input_cls() }}">
+      {% endcall %}
+    </div>
+    {% call field("Bio") %}
+      <textarea name="bio" rows="4" class="{{ input_cls() }}">{{ profile_values.bio }}</textarea>
+    {% endcall %}
+    <div class="flex justify-end">
+      <button type="button" id="save-profile"
+              class="text-sm font-medium rounded-lg px-3 py-2 bg-brand-600 text-white hover:bg-brand-700">Save Changes</button>
+    </div>
+  </form>
+  {% endcall %}
+
+  <dialog id="password-confirmation" class="w-full max-w-md rounded-xl border border-slate-200 p-0 shadow-xl backdrop:bg-slate-900/40">
+    <div class="p-5">
+      <h2 class="font-semibold mb-2">Confirm profile changes</h2>
+      {% if profile_error %}<p class="text-sm text-red-700 mb-3" role="alert">{{ profile_error }}</p>{% endif %}
+      <p class="text-sm text-slate-600 mb-4">Enter your current password to save these changes.</p>
+      <label class="block mb-4">
+        <span class="text-sm font-medium block mb-1">Current password</span>
+        <input name="current_password" type="password" form="profile-form" autocomplete="current-password"
+               required class="{{ input_cls() }}">
+      </label>
+      <div class="flex justify-end gap-2">
+        <button type="button" id="cancel-profile" class="text-sm font-medium rounded-lg px-3 py-2 border hover:bg-slate-50">Cancel</button>
+        <button type="submit" form="profile-form"
+                class="text-sm font-medium rounded-lg px-3 py-2 bg-brand-600 text-white hover:bg-brand-700">Confirm &amp; Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  {% call card("Change Password") %}
+  <form method="post" class="space-y-1">
+    {{ csrf() }}
+    <input type="hidden" name="action" value="password">
+    {% call field("Current password") %}
+      <input name="current_password" type="password" autocomplete="current-password" required class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("New password") %}
+      <input name="new_password" type="password" autocomplete="new-password" minlength="8" required class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("Confirm new password") %}
+      <input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required class="{{ input_cls() }}">
+    {% endcall %}
+    <div class="flex justify-end">
+      <button class="text-sm font-medium rounded-lg px-3 py-2 bg-brand-600 text-white hover:bg-brand-700">Change Password</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+<script>
+  const passwordDialog = document.getElementById("password-confirmation");
+  document.getElementById("save-profile").addEventListener("click", () => passwordDialog.showModal());
+  document.getElementById("cancel-profile").addEventListener("click", () => passwordDialog.close());
+  {% if confirm_profile %}passwordDialog.showModal();{% endif %}
+</script>
+{% endblock %}

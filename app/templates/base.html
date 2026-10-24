@@ -57,7 +57,7 @@
           <div class="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
             <p class="px-4 py-2 text-xs text-slate-500 capitalize border-b border-slate-100">{{ current_user.role }}</p>
             {% if not current_user.is_staff %}
-              <a href="{{ url_for('intake.profile') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Profile</a>
+              <a href="{{ url_for('intake.account_profile') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Profile</a>
             {% endif %}
             <form method="post" action="{{ url_for('auth.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

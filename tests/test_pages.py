@@ -7,7 +7,7 @@ from app.extensions import db
 
 from .conftest import login
 
-PARTICIPANT_PAGES = ["/dashboard", "/profile/1", "/profile/2", "/profile/3", "/profile/4", "/apply", "/agreements",
+PARTICIPANT_PAGES = ["/dashboard", "/account", "/profile/1", "/profile/2", "/profile/3", "/profile/4", "/apply", "/agreements",
                      "/events", "/events/1", "/events/2", "/matches"]
 
 

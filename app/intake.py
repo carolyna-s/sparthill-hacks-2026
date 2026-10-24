@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user
 
@@ -23,7 +25,8 @@ def require_profile_setup():
     if profile_setup_complete(current_user):
         session.pop(_onboarding_session_key(current_user), None)
         return None
-    if request.endpoint in {"static", "auth.logout", "intake.profile", "intake.profile_step"}:
+    if request.endpoint in {"static", "auth.logout", "intake.profile", "intake.profile_step",
+                            "intake.account_profile"}:
         return None
     key = _onboarding_session_key(current_user)
     page = {
@@ -161,6 +164,76 @@ def profile():
         step = 1 if profile_setup_complete(current_user) else _resume_profile_step(current_user)
     session[key] = step
     return redirect(url_for("intake.profile_step", step=step))
+
+
+@bp.route("/account", methods=["GET", "POST"])
+@role_required("mentee", "mentor")
+def account_profile():
+    p = current_user.profile
+    if p is None:
+        abort(409)
+
+    profile_values = {
+        "organization": p.organization or "",
+        "headline": p.headline or "",
+        "bio": p.bio or "",
+        "linkedin_url": p.linkedin_url or "",
+    }
+    profile_error = None
+    confirm_profile = False
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "profile":
+            company = request.form.get("organization", "").strip()
+            headline = request.form.get("headline", "").strip()
+            bio = request.form.get("bio", "").strip()
+            linkedin_url = request.form.get("linkedin_url", "").strip()
+            profile_values = {
+                "organization": company,
+                "headline": headline,
+                "bio": bio,
+                "linkedin_url": linkedin_url,
+            }
+            confirm_profile = True
+            try:
+                parsed_url = urlsplit(linkedin_url) if linkedin_url else None
+            except ValueError:
+                parsed_url = None
+            if not current_user.check_password(request.form.get("current_password", "")):
+                profile_error = "That password is incorrect. Verify your password and try again."
+            elif len(company) > 200 or len(headline) > 200 or len(linkedin_url) > 300:
+                profile_error = "Company, current role, or LinkedIn URL is too long."
+            elif linkedin_url and (parsed_url is None or parsed_url.scheme not in {"http", "https"}
+                                   or not parsed_url.netloc):
+                profile_error = "Enter a valid LinkedIn URL beginning with http:// or https://."
+            else:
+                p.organization = company
+                p.headline = headline
+                p.bio = bio
+                p.linkedin_url = linkedin_url or None
+                db.session.commit()
+                flash("Profile changes saved.", "ok")
+                return redirect(url_for("intake.account_profile"))
+        elif action == "password":
+            current_password = request.form.get("current_password", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+            if not current_user.check_password(current_password):
+                flash("Your current password is incorrect.", "error")
+            elif len(new_password) < 8:
+                flash("New password must be at least 8 characters.", "error")
+            elif new_password != confirm_password:
+                flash("New password and confirmation do not match.", "error")
+            else:
+                current_user.set_password(new_password)
+                db.session.commit()
+                flash("Password changed successfully.", "ok")
+                return redirect(url_for("intake.account_profile"))
+        else:
+            abort(400)
+
+    return render_template("account/profile.html", profile=p, profile_values=profile_values,
+                           profile_error=profile_error, confirm_profile=confirm_profile)
 
 
 @bp.route("/profile/<int:step>", methods=["GET", "POST"])
