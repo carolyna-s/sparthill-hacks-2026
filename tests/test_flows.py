@@ -51,7 +51,7 @@ def test_mentee_intake_flow(client):
     assert b"Please complete onboarding to access Messages" in blocked.data
     blocked = client.get("/profile", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/4")
-    assert b"Please complete onboarding to access Profile" in blocked.data
+    assert b"Please complete onboarding" not in blocked.data
 
     resp = client.post("/profile/4", data={
         "interests": "Product design",
@@ -63,7 +63,11 @@ def test_mentee_intake_flow(client):
     assert blocked.request.path.endswith("/profile/4")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
     client.post("/logout")
-    client.post("/login", data={"email": "new@x.org", "password": "longenough"})
+    login_response = client.post("/login", data={"email": "new@x.org", "password": "longenough"})
+    assert login_response.headers["Location"].endswith("/profile")
+    onboarding = client.get(login_response.headers["Location"], follow_redirects=True)
+    assert onboarding.request.path.endswith("/profile/4")
+    assert b"Please complete onboarding" not in onboarding.data
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/4")
     assert b"Please complete onboarding to access Dashboard" in blocked.data

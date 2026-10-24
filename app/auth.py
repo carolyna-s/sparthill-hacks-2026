@@ -62,6 +62,11 @@ def login():
         user = db.session.query(User).filter_by(email=request.form["email"].strip().lower()).first()
         if user and user.check_password(request.form["password"]):
             login_user(user, remember=True)
+            if user.role in ("mentee", "mentor"):
+                from .intake import profile_setup_complete
+
+                if not profile_setup_complete(user):
+                    return redirect(url_for("intake.profile"))
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("main.dashboard"))
         flash("Wrong email or password.", "error")

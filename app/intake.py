@@ -23,11 +23,9 @@ def require_profile_setup():
     if profile_setup_complete(current_user):
         session.pop(_onboarding_session_key(current_user), None)
         return None
-    if request.endpoint in {"static", "auth.logout", "intake.profile_step"}:
+    if request.endpoint in {"static", "auth.logout", "intake.profile", "intake.profile_step"}:
         return None
     key = _onboarding_session_key(current_user)
-    if request.endpoint == "intake.profile" and key not in session:
-        return None
     page = {
         "main.landing": "Home",
         "main.dashboard": "Dashboard",
