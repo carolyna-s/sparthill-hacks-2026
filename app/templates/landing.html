@@ -1,12 +1,25 @@
 {% extends "base.html" %}
+{% block main_class %}relative isolate overflow-hidden flex flex-col justify-center{% endblock %}
 {% block content %}
-<div class="py-16 text-center">
-  <h1 class="text-4xl font-bold mb-4">Mentorship that actually happens</h1>
-  <p class="text-slate-600 max-w-xl mx-auto mb-8">Apply, get matched with a mentor who fits your goals, and stay on track
-    with sessions, prework, check-ins, and messaging in one place.</p>
-  <div class="flex justify-center gap-3">
-    <a href="{{ url_for('auth.register', role='mentee') }}" class="bg-indigo-600 text-white rounded px-5 py-2.5">Apply as a mentee</a>
-    <a href="{{ url_for('auth.register', role='mentor') }}" class="border rounded px-5 py-2.5 bg-white">Become a mentor</a>
+<div aria-hidden="true" class="absolute inset-0 -z-10 bg-gradient-to-b from-brand-50 via-white to-slate-50"></div>
+<div aria-hidden="true" class="absolute -top-32 left-1/2 -translate-x-1/2 -z-10 h-[32rem] w-[48rem] rounded-full bg-brand-200/40 blur-3xl"></div>
+<img aria-hidden="true" src="{{ url_for('static', filename='logos/spartan.webp') }}" alt=""
+     class="absolute -right-24 bottom-0 -z-10 w-[28rem] opacity-[0.05] pointer-events-none select-none hidden md:block">
+
+<section class="max-w-6xl mx-auto px-4 py-20 sm:py-28 text-center">
+  <h1 class="text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight text-brand-950 mb-5">
+    <span class="md:whitespace-nowrap">Connecting Spartans with industry mentors</span><br class="hidden md:block">
+    <span class="md:whitespace-nowrap text-brand-600">to grow into what's next.</span>
+  </h1>
+  <p class="text-lg text-slate-600 max-w-2xl mx-auto mb-10">
+    The Spartan Mentorship Program pairs SJSU students with experienced mentors who share their goals.
+    Get matched, meet regularly, and build the skills and connections to launch your career.
+  </p>
+  <div class="flex flex-col sm:flex-row justify-center gap-3">
+    <a href="{{ url_for('auth.register') }}"
+       class="rounded-lg bg-brand-600 px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2">Create account</a>
+    <a href="{{ url_for('auth.login') }}"
+       class="rounded-lg border border-slate-300 bg-white px-6 py-3 font-semibold text-brand-800 hover:border-brand-300 hover:bg-brand-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2">Log in</a>
   </div>
-</div>
+</section>
 {% endblock %}

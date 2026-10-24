@@ -16,17 +16,25 @@ bp = Blueprint("intake", __name__)
 
 # Application questions per role: (key, label). Answers are stored as JSON, so editing this
 # list needs no migration.
-QUESTIONS = {
+Personality_Questions_Data = {
     "mentee": [
-        ("why", "Why do you want a mentor right now?"),
-        ("success", "What would make this program a success for you?"),
-        ("commitment", "How many hours per month can you commit?"),
+        ("mentorship_style", "What communication or mentorship style helps you learn most effectively?"),
+        ("career_advice", "What type of advice would you like to receive as you begin or develop your career?"),
     ],
     "mentor": [
-        ("experience", "Describe your career path and experience."),
-        ("why", "Why do you want to mentor?"),
-        ("commitment", "How many hours per month can you commit?"),
+        ("mentorship_style", "What type of mentor do you see yourself being?"),
+        ("career_advice", "What type of advice would you give someone beginning their career in your field?"),
     ],
+}
+
+# Profile prompts: the answers are stored on Profile, separately from application answers.
+Industry_Relevant_Prompt_Data = {
+    "mentee": {
+        "interests": "What subjects are you interested in learning more about?",
+    },
+    "mentor": {
+        "looking_for": "Relating to your industry experience, what do you bring to the table?",
+    },
 }
 
 
@@ -49,6 +57,17 @@ STEP_TAGS = {2: ("availability", "languages"), 3: ("development_areas", "goals",
 
 def missing_fields(user: User, step: int | None = None) -> list[str]:
     return [label for s, ok, label in REQUIRED if step in (None, s) and not ok(user)]
+
+
+def signup_next_step(user: User) -> str | None:
+    """URL of the first unfinished sign-up step (profile, agreements, submit), or None when done."""
+    if missing_fields(user):
+        return url_for("intake.profile")
+    if unsigned_agreements(user):
+        return url_for("intake.agreements")
+    if user.application is None or user.application.status == "draft":
+        return url_for("intake.apply")
+    return None
 
 
 def canonical_industry(typed: str) -> str:
@@ -172,7 +191,8 @@ def _save_questions(user: User) -> bool:
         setattr(user.profile, f, request.form.get(f, "").strip())
     app_row = _application(user)
     if app_row.status == "draft":
-        app_row.answers = {k: request.form.get(k, "").strip() for k, _ in QUESTIONS[user.role]}
+        app_row.answers = {k: request.form.get(k, "").strip()
+                           for k, _ in Personality_Questions_Data[user.role]}
     return True
 
 
@@ -193,7 +213,8 @@ def _render_step(step: int):
                            locked=bool(missing_fields(current_user)),
                            days=DAYS, periods=PERIODS, industries=INDUSTRIES, sel=sel,
                            industry=p.industry or parsed.get("industry", ""), suggested=suggested,
-                           questions=QUESTIONS[current_user.role],
+                           Personality_Questions_Data=Personality_Questions_Data[current_user.role],
+                           Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data[current_user.role],
                            application=current_user.application)
 
 
@@ -214,10 +235,13 @@ def apply():
             app_row.status = "submitted"
             app_row.submitted_at = utcnow()
             flash("Application submitted. Staff will review it soon.", "ok")
+            db.session.commit()
+            return redirect(url_for("main.dashboard"))
         db.session.commit()
         return redirect(url_for("intake.apply"))
     db.session.commit()
-    return render_template("intake/apply.html", application=app_row, questions=QUESTIONS[current_user.role],
+    return render_template("intake/apply.html", application=app_row,
+                           Personality_Questions_Data=Personality_Questions_Data[current_user.role],
                            missing=missing_fields(current_user), unsigned=unsigned_agreements(current_user))
 
 
@@ -243,4 +267,6 @@ def sign(agreement_id: int):
                                           typed_name=typed, ip_address=request.remote_addr))
         db.session.commit()
         flash(f"Signed “{agreement.title}”.", "ok")
+        if not unsigned_agreements(current_user):
+            return redirect(url_for("intake.apply"))
     return redirect(url_for("intake.agreements"))

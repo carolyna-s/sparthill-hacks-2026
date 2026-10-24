@@ -3,7 +3,8 @@
 import io
 
 from app.extensions import db
-from app.models import Application, Attendance, Event, Match, Message, ReminderLog, Submission, User
+from app.models import (Application, Attendance, Event, Match, MatchExclusion, MatchFeedback, Message,
+                        ReminderLog, Submission, User)
 from app.reminders import send_due_reminders
 
 from .conftest import login
@@ -37,18 +38,33 @@ def test_mentee_intake_flow(client):
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
 
-    resp = client.post("/profile/4", data={"looking_for": "Interview practice", "why": "a", "success": "b"})
+    profile_page = client.get("/profile/4")
+    assert b"What subjects are you interested in learning more about?" in profile_page.data
+    assert b"What communication or mentorship style helps you learn most effectively?" in profile_page.data
+    assert b"What type of advice would you like to receive as you begin or develop your career?" in profile_page.data
+
+    resp = client.post("/profile/4", data={
+        "looking_for": "Interview practice",
+        "mentorship_style": "Clear communication",
+        "career_advice": "Actionable career guidance",
+    })
     assert resp.headers["Location"].endswith("/apply")
     assert user.profile.looking_for == "Interview practice"
-    assert user.application.answers == {"why": "a", "success": "b", "commitment": ""}
+    assert user.application.answers == {
+        "mentorship_style": "Clear communication",
+        "career_advice": "Actionable career guidance",
+    }
 
     client.post("/apply", data={"action": "submit"})
     assert user.application.status == "draft"  # agreement not signed yet
+    assert client.get("/dashboard").headers["Location"].endswith("/agreements")  # locked until sign-up is done
 
-    client.post("/agreements/1/sign", data={"typed_name": "New Person"})
-    client.post("/apply", data={"action": "submit"})
+    assert client.post("/agreements/1/sign", data={"typed_name": "New Person"}).headers["Location"].endswith("/apply")
+    assert client.get("/dashboard").headers["Location"].endswith("/apply")
+    assert client.post("/apply", data={"action": "submit"}).headers["Location"].endswith("/dashboard")
     db.session.refresh(user.application)
     assert user.application.status == "submitted"  # free-response answers are optional
+    assert client.get("/dashboard").status_code == 200
 
 
 def test_profile_back_saves_without_requiring(client):
@@ -82,13 +98,19 @@ def test_required_fields_block_next(client):
                                            "capacity": "3"})
     assert resp.headers["Location"].endswith("/profile/3")
     assert user.profile.capacity == 3
+    client.post("/profile/3", data={})
+    profile_page = client.get("/profile/4")
+    assert b"Relating to your industry experience, what do you bring to the table?" in profile_page.data
+    assert b"What type of mentor do you see yourself being?" in profile_page.data
+    assert b"What type of advice would you give someone beginning their career in your field?" in profile_page.data
 
 
 def test_staff_pages_are_staff_only(client):
     login(client, "jordan.kim@example.org")
     assert client.get("/staff/").status_code == 403
     login(client, "staff.admin@example.org")
-    for path in ["/staff/", "/staff/applications", "/staff/matching", "/staff/reports", "/staff/events/new"]:
+    for path in ["/staff/", "/staff/applications", "/staff/people", "/staff/matching", "/staff/reports",
+                 "/staff/events/new"]:
         assert client.get(path).status_code == 200, path
 
 
@@ -115,6 +137,41 @@ def test_review_match_and_message(client):
 
     outsider = next(m for m in proposed if not m.includes(match.mentor))
     assert client.get(f"/messages/{outsider.id}").status_code == 404
+
+
+def test_reject_match_needs_reason_and_is_never_reproposed(client):
+    login(client, "staff.admin@example.org")
+    client.post("/staff/matching/propose-all")
+    m = db.session.query(Match).filter_by(status="proposed").first()
+    assert client.get(f"/staff/matches/{m.id}").status_code == 200
+
+    client.post(f"/staff/matches/{m.id}/reject")  # no reason or explanation
+    client.post(f"/staff/matches/{m.id}/reject", data={"reason": "gut_feeling", "comment": "  "})
+    assert m.status == "proposed" and db.session.query(MatchFeedback).count() == 0
+
+    client.post(f"/staff/matches/{m.id}/reject",
+                data={"reason": "gut_feeling", "comment": "Their goals don't line up, I just sense it."})
+    assert m.status == "rejected"
+    f = db.session.query(MatchFeedback).one()
+    assert (f.kind, f.reason, f.comment) == ("deny", "gut_feeling", "Their goals don't line up, I just sense it.")
+    assert db.session.query(MatchExclusion).filter_by(mentee_id=m.mentee_id, mentor_id=m.mentor_id).count() == 1
+
+    client.post("/staff/matching/propose-all")
+    assert db.session.query(Match).filter_by(mentee_id=m.mentee_id, mentor_id=m.mentor_id).count() == 1
+    assert b"I just sense it" in client.get("/staff/matching").data
+    assert b"I just sense it" in client.get(f"/staff/people/{m.mentee_id}").data
+
+
+def test_staff_people_dashboards(client):
+    login(client, "staff.admin@example.org")
+    page = client.get("/staff/people?role=mentee&q=jordan").data
+    assert b"Jordan Kim" in page and b"Priya Raman" not in page
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    assert client.get(f"/staff/people/{jordan.id}").status_code == 200
+    staff = db.session.query(User).filter_by(role="staff").first()
+    assert client.get(f"/staff/people/{staff.id}").status_code == 404
+    login(client, "jordan.kim@example.org")
+    assert client.get("/staff/people").status_code == 403
 
 
 def test_event_submission_checkin_feedback(client):

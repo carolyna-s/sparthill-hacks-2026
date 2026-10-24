@@ -9,21 +9,21 @@
 {% call card("Before you submit") %}
   <ul class="text-sm space-y-2">
     <li>{% if missing %}<span class="text-amber-700">•</span> Profile: add {{ missing|join(' and ') }}.
-          <a class="text-indigo-600" href="{{ url_for('intake.profile') }}">Finish your profile</a>
+          <a class="text-brand-600" href="{{ url_for('intake.profile') }}">Finish your profile</a>
         {% else %}<span class="text-emerald-700">✓</span> Profile complete{% endif %}</li>
     <li>{% if unsigned %}<span class="text-amber-700">•</span> {{ unsigned|length }} agreement(s) to
-          <a class="text-indigo-600" href="{{ url_for('intake.agreements') }}">sign</a>
+          <a class="text-brand-600" href="{{ url_for('intake.agreements') }}">sign</a>
         {% else %}<span class="text-emerald-700">✓</span> Agreements signed{% endif %}</li>
   </ul>
 {% endcall %}
 {% endif %}
 
 {% call card("Your answers") %}
-  {% for key, label in questions %}
+  {% for key, label in Personality_Questions_Data %}
     <p class="text-sm font-medium">{{ label }}</p>
     <p class="text-sm text-slate-600 mb-3 whitespace-pre-line">{{ application.answers.get(key) or '—' }}</p>
   {% endfor %}
-  {% if draft %}<a class="text-sm text-indigo-600" href="{{ url_for('intake.profile_step', step=4) }}">Edit answers</a>{% endif %}
+  {% if draft %}<a class="text-sm text-brand-600" href="{{ url_for('intake.profile_step', step=4) }}">Edit answers</a>{% endif %}
 {% endcall %}
 
 {% if draft %}

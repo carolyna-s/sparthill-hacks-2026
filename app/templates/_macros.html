@@ -1,7 +1,7 @@
 {% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
 
 {% macro card(title=None) %}
-<section class="bg-white border rounded-lg p-5 mb-5">
+<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
   {% if title %}<h2 class="font-semibold mb-3">{{ title }}</h2>{% endif %}
   {{ caller() }}
 </section>
@@ -22,7 +22,7 @@
   <legend class="text-sm font-medium mb-2">{{ label }}{% if required %} {{ req() }}{% endif %}{% if hint %} <span class="font-normal text-slate-500">· {{ hint }}</span>{% endif %}</legend>
   <div class="flex flex-wrap gap-2">
     {% for opt in options %}
-      <label class="text-sm border rounded-full px-3 py-1 cursor-pointer {{ 'ring-2 ring-amber-400' if opt in suggested }} has-[:checked]:bg-indigo-600 has-[:checked]:text-white has-[:checked]:border-indigo-600">
+      <label class="text-sm border rounded-full px-3 py-1 cursor-pointer {{ 'ring-2 ring-gold-400' if opt in suggested }} has-[:checked]:bg-brand-600 has-[:checked]:text-white has-[:checked]:border-brand-600">
         <input type="checkbox" name="{{ name }}" value="{{ opt }}" class="hidden" {{ 'checked' if opt in selected }}>{{ opt }}
       </label>
     {% endfor %}
@@ -36,7 +36,7 @@
 
 {% macro btn(label, kind='primary', name=None, value=None) %}
 <button {% if name %}name="{{ name }}" value="{{ value }}"{% endif %}
-  class="text-sm rounded px-3 py-1.5 {{ 'bg-indigo-600 text-white hover:bg-indigo-700' if kind == 'primary' else 'border hover:bg-slate-50' if kind == 'secondary' else 'bg-red-600 text-white hover:bg-red-700' }}">{{ label }}</button>
+  class="text-sm font-medium rounded-lg px-3 py-1.5 {{ 'bg-brand-600 text-white hover:bg-brand-700' if kind == 'primary' else 'border hover:bg-slate-50' if kind == 'secondary' else 'bg-red-600 text-white hover:bg-red-700' }}">{{ label }}</button>
 {% endmacro %}
 
 {% macro status_badge(status) %}
@@ -46,4 +46,4 @@
 <span class="text-xs rounded px-2 py-0.5 {{ colors.get(status, 'bg-slate-100') }}">{{ status }}</span>
 {% endmacro %}
 
-{% macro input_cls() %}w-full border rounded px-3 py-2 text-sm{% endmacro %}
+{% macro input_cls() %}w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100{% endmacro %}

@@ -9,7 +9,7 @@
     <input name="password" type="password" placeholder="Password" required class="{{ input_cls() }}">
     {{ btn("Log in") }}
   </form>
-  <p class="text-sm text-slate-500 mt-3">New here? <a class="text-indigo-600" href="{{ url_for('auth.register') }}">Create an account</a></p>
+  <p class="text-sm text-slate-500 mt-3">New here? <a class="text-brand-600" href="{{ url_for('auth.register') }}">Create an account</a></p>
   {% endcall %}
 </div>
 {% endblock %}

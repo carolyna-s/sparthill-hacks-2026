@@ -16,7 +16,7 @@
       {{ csrf() }}
       <textarea name="body" rows="4" class="{{ input_cls() }} mb-2">{{ s.body if s else '' }}</textarea>
       <input type="file" name="file" class="text-sm mb-3 block">
-      {% if s and s.file_name %}<p class="text-xs text-slate-500 mb-2">Attached: <a class="text-indigo-600" href="{{ url_for('program.submission_file', submission_id=s.id) }}">{{ s.file_name }}</a></p>{% endif %}
+      {% if s and s.file_name %}<p class="text-xs text-slate-500 mb-2">Attached: <a class="text-brand-600" href="{{ url_for('program.submission_file', submission_id=s.id) }}">{{ s.file_name }}</a></p>{% endif %}
       {{ btn("Update" if s else "Submit") }}
       {% if s %}<span class="text-xs text-emerald-700 ml-2">Submitted {{ s.submitted_at.strftime('%b %d %H:%M') }}</span>{% endif %}
     </form>

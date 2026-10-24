@@ -19,7 +19,8 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
 A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
 it doesn't drag every score down. Text is different: a pair with no answers to compare (blank,
-or not embedded yet) leaves it out of the score entirely, weight included. Mentors at capacity are excluded.
+or not embedded yet) leaves it out of the score entirely, weight included. Mentors at capacity are excluded,
+and so are pairs staff rejected (match_exclusion): a rejected pair is never proposed again.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -33,7 +34,7 @@ from sqlalchemy import func
 
 from . import embeddings
 from .extensions import db
-from .models import Application, Match, Profile, User
+from .models import Application, Match, MatchExclusion, Profile, User
 
 HARD_FILTERS = ("availability", "languages")
 HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
@@ -129,11 +130,12 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
 
 
 def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, int],
-                 limit: int | None = None) -> list[Candidate]:
-    """mentors: {mentor_id: tags}, open_slots: {mentor_id: remaining capacity}."""
+                 limit: int | None = None, excluded: set[int] = frozenset()) -> list[Candidate]:
+    """mentors: {mentor_id: tags}, open_slots: {mentor_id: remaining capacity},
+    excluded: mentor ids staff rejected for this mentee."""
     ranked = []
     for mentor_id, tags in mentors.items():
-        if open_slots.get(mentor_id, 0) <= 0:
+        if mentor_id in excluded or open_slots.get(mentor_id, 0) <= 0:
             continue
         overlap = hard_filter_overlap(mentee, tags)
         if overlap is None:
@@ -146,8 +148,10 @@ def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, i
 
 
 def assign(mentees: dict[int, dict], mentors: dict[int, dict],
-           open_slots: dict[int, int]) -> dict[int, Candidate]:
+           open_slots: dict[int, int],
+           excluded: set[tuple[int, int]] = frozenset()) -> dict[int, Candidate]:
     """Propose one mentor per mentee: best-scoring pairs first, respecting capacity.
+    excluded: (mentee_id, mentor_id) pairs never to propose.
 
     Greedy over all pairs is simple and explainable to staff; swap in a min-cost-flow
     solver later if globally optimal assignments matter.
@@ -155,7 +159,7 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
     slots = dict(open_slots)
     pairs = []
     for mentee_id, tags in mentees.items():
-        for c in rank_mentors(tags, mentors, slots):
+        for c in rank_mentors(tags, mentors, slots, excluded={mt for me, mt in excluded if me == mentee_id}):
             pairs.append((mentee_id, c))
     pairs.sort(key=lambda p: (-p[1].score, p[0], p[1].mentor_id))
 
@@ -199,16 +203,22 @@ def unmatched_mentee_ids() -> set[int]:
     return set(accepted_profiles("mentee")) - matched
 
 
+def excluded_pairs() -> set[tuple[int, int]]:
+    """(mentee_id, mentor_id) pairs staff rejected."""
+    return {(me, mt) for me, mt in db.session.query(MatchExclusion.mentee_id, MatchExclusion.mentor_id)}
+
+
 def ranking_for(mentee_id: int, limit: int = 5) -> list[Candidate]:
     profile = db.session.query(Profile).filter_by(user_id=mentee_id).one()
-    return rank_mentors(_tags(profile), accepted_profiles("mentor"), open_slots(), limit)
+    excluded = {mt for me, mt in excluded_pairs() if me == mentee_id}
+    return rank_mentors(_tags(profile), accepted_profiles("mentor"), open_slots(), limit, excluded)
 
 
 def propose_all() -> list[Match]:
     """Create `proposed` matches for every unmatched accepted mentee."""
     mentees = {k: v for k, v in accepted_profiles("mentee").items() if k in unmatched_mentee_ids()}
     created = []
-    for mentee_id, c in assign(mentees, accepted_profiles("mentor"), open_slots()).items():
+    for mentee_id, c in assign(mentees, accepted_profiles("mentor"), open_slots(), excluded_pairs()).items():
         m = Match(mentee_id=mentee_id, mentor_id=c.mentor_id, score=c.score, score_breakdown=c.breakdown)
         db.session.add(m)
         created.append(m)

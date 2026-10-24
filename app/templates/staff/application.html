@@ -7,7 +7,7 @@
 <div class="grid md:grid-cols-3 gap-5">
   <div class="md:col-span-2">
     {% call card("Application") %}
-      {% for key, label in questions %}
+      {% for key, label in Personality_Questions_Data %}
         <p class="text-sm font-medium">{{ label }}</p>
         <p class="text-sm text-slate-700 mb-3 whitespace-pre-line">{{ a.answers.get(key) or '—' }}</p>
       {% endfor %}

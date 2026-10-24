@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Events</h1>
-  {% if current_user.is_staff %}<a href="{{ url_for('staff.new_event') }}" class="text-sm bg-indigo-600 text-white rounded px-3 py-1.5">New event</a>{% endif %}
+  {% if current_user.is_staff %}<a href="{{ url_for('staff.new_event') }}" class="text-sm bg-brand-600 text-white rounded px-3 py-1.5">New event</a>{% endif %}
 </div>
 {% call card() %}
 <table class="w-full text-sm">
@@ -11,7 +11,7 @@
   {% for e in events %}
   <tr class="border-t">
     <td class="py-2">{{ e.starts_at.strftime('%a %b %d, %H:%M') }}</td>
-    <td><a class="text-indigo-600" href="{{ url_for('program.event', event_id=e.id) }}">{{ e.title }}</a></td>
+    <td><a class="text-brand-600" href="{{ url_for('program.event', event_id=e.id) }}">{{ e.title }}</a></td>
     <td>{{ e.location }}</td>
     {% if current_user.is_staff %}<td class="font-mono">{{ e.checkin_code }}</td>{% endif %}
   </tr>

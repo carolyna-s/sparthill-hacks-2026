@@ -1,14 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, tags %}
-{% macro why(breakdown) %}
-  {% for dim, shared in (breakdown.get('filters') or {}).items() if shared %}
-    <div class="text-xs text-slate-500">{{ dim }}: <span class="text-slate-700">{{ shared|join(', ') }}</span></div>
-  {% endfor %}
-  {% for dim, d in breakdown.items() if dim != 'filters' %}
-    <div class="text-xs text-slate-500">{{ dim.replace('_', ' ') }}: {{ (d.coverage * 100)|round|int }}%
-      {% if d.shared %}<span class="text-slate-700">({{ d.shared|join(', ') }})</span>{% endif %}</div>
-  {% endfor %}
-{% endmacro %}
+{% from "staff/_match.html" import why, denial with context %}
 {% block content %}
 <div class="flex justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Matching</h1>
@@ -19,12 +11,12 @@
 <table class="w-full text-sm">
   {% for m in proposed %}
   <tr class="border-t align-top">
-    <td class="py-2 font-medium">{{ m.mentee.name }} → {{ m.mentor.name }}</td>
+    <td class="py-2 font-medium"><a class="hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} → {{ m.mentor.name }}</a></td>
     <td class="py-2 text-lg font-semibold">{{ m.score }}</td>
     <td class="py-2">{{ why(m.score_breakdown) }}</td>
     <td class="py-2 text-right whitespace-nowrap">
       <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='approve') }}" class="inline">{{ csrf() }}{{ btn("Approve") }}</form>
-      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="inline">{{ csrf() }}{{ btn("Reject", "secondary") }}</form>
+      <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="inline-block text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
     </td>
   </tr>
   {% else %}<tr><td class="text-slate-500">Nothing proposed.</td></tr>{% endfor %}
@@ -59,10 +51,19 @@
   {% for m in approved %}
   <tr class="border-t">
     <td class="py-2">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</td><td>{{ m.score }}</td>
-    <td class="text-right"><a class="text-indigo-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
+    <td class="text-right"><a class="text-brand-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
       <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='end') }}" class="inline">{{ csrf() }}{{ btn("End", "secondary") }}</form></td>
   </tr>
   {% else %}<tr><td class="text-slate-500">None yet.</td></tr>{% endfor %}
 </table>
+{% endcall %}
+
+{% call card("Recently rejected (" ~ rejected|length ~ ")") %}
+{% for f in rejected %}
+  <div class="border-t first:border-t-0 py-3">
+    <a class="text-sm font-medium hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=f.match_id) }}">{{ f.match.mentee.name }} → {{ f.match.mentor.name }}</a>
+    <div class="mt-1">{{ denial(f) }}</div>
+  </div>
+{% else %}<p class="text-sm text-slate-500">No rejections yet.</p>{% endfor %}
 {% endcall %}
 {% endblock %}
