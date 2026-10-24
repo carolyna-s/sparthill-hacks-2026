@@ -79,6 +79,13 @@ EDUCATION_PATHS = [
     "first-generation college student", "international student", "returning / adult learner",
 ]
 
+OPEN_TO_ANY = "Open to Any"
+UNDECIDED = "Undecided"
+MENTEE_DEVELOPMENT_AREAS = [*DEVELOPMENT_AREAS, OPEN_TO_ANY]
+MENTEE_GOALS = [*GOALS, UNDECIDED]
+MENTOR_GOALS = [*GOALS, "entrepreneurship"]
+MENTEE_EDUCATION_PATHS = [*EDUCATION_PATHS, UNDECIDED]
+
 # Multi-select (tag picker) fields on the profile form.
 TAXONOMY = {
     "availability": AVAILABILITY,
@@ -87,3 +94,15 @@ TAXONOMY = {
     "goals": GOALS,
     "education_paths": EDUCATION_PATHS,
 }
+
+
+def taxonomy_for_role(role):
+    """Return the tags available to a mentor or mentee."""
+    taxonomy = dict(TAXONOMY)
+    if role == "mentor":
+        taxonomy["goals"] = MENTOR_GOALS
+    elif role == "mentee":
+        taxonomy["development_areas"] = MENTEE_DEVELOPMENT_AREAS
+        taxonomy["goals"] = MENTEE_GOALS
+        taxonomy["education_paths"] = MENTEE_EDUCATION_PATHS
+    return taxonomy
