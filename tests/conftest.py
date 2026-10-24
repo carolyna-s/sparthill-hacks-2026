@@ -33,4 +33,5 @@ def client(app):
 
 
 def login(client, email: str, password: str = PASSWORD):
+    client.post("/logout")  # /login redirects away while signed in, so switching users logs out first
     return client.post("/login", data={"email": email, "password": password})
