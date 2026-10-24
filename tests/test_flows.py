@@ -296,6 +296,33 @@ def test_staff_pages_are_staff_only(client):
     assert b"Staff Overview" in overview
 
 
+def test_messages_locked_until_match_is_approved(client):
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(role="mentor").first()
+    login(client, jordan.email)
+    page = client.get("/messages/")
+    assert page.status_code == 200 and b"Messages aren't available yet" in page.data
+    assert b"You don't have a mentor yet" in page.data
+    assert b"locked until your mentorship is approved" in client.get("/dashboard", follow_redirects=True).data
+
+    m = Match(mentee_id=jordan.id, mentor_id=mentor.id, score=80, score_breakdown={})
+    db.session.add(m)
+    db.session.commit()
+    assert b"Staff are reviewing a mentor for you" in client.get("/messages/").data
+    assert mentor.name.encode() not in client.get(f"/messages/{m.id}").data  # proposal isn't revealed
+
+    m.status = "released"
+    db.session.commit()
+    page = client.get(f"/messages/{m.id}").data
+    assert b"awaiting" in page and b"Confirm your match" in page
+
+    m.status = "approved"
+    db.session.commit()
+    resp = client.get("/messages/")
+    assert resp.headers["Location"].endswith(f"/messages/{m.id}")
+    assert b"locked until your mentorship is approved" not in client.get(f"/messages/{m.id}").data
+
+
 def test_review_match_and_message(client):
     login(client, "staff.admin@example.org")
     assert db.session.query(Application).filter_by(status="submitted").count() == 0
