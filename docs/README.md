@@ -1,12 +1,79 @@
 # Mentorship Platform
 
 A web app for running a mentorship program: mentors and mentees apply and sign agreements,
-a weighted matching engine ranks mentors for each mentee, matched pairs work through sessions
-(prework, postwork, check-ins, reminders, messaging), and staff review applicants, approve
-matches, and track participation and satisfaction.
+a weighted matching engine ranks mentors for each mentee, matched pairs work through modules
+(pre-work, a live session with check-in, post-work), message each other and schedule meetings,
+and staff review applicants, approve matches, and track participation. Admins manage accounts.
 
 One Flask service serves the whole app. Data lives in **Supabase Postgres** (SQLite works for
 offline local dev). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
+
+## How people use the app
+
+There are four roles. Mentors and mentees sign themselves up. Staff and admin accounts are
+created by an admin.
+
+### Mentee and mentor
+
+1. **Register.** On `/register`, pick *mentee* or *mentor* and enter your name, school, email, and
+   a password (8+ characters).
+2. **Onboard.** Until onboarding is done, every page except the profile steps sends you back to
+   the step you were on ("Please complete onboarding to access …"). In order:
+   - **Profile**, in 4 steps: *About you*, *Availability & language* (both required, since
+     matching filters on them), then *Preferences* and *In your own words* (optional). A LinkedIn
+     PDF can be uploaded to pre-fill suggestions.
+   - **Agreements**: sign each active agreement for your role by typing your name.
+   - **Application**: answer the application questions and submit.
+3. **Wait for review.** Staff accept or reject the application. Only accepted people go into
+   the matching pool. You can still edit your submitted application from the dashboard
+   (*Submitted Application* → `/dashboard/application`).
+4. **Get matched.** Staff propose and approve pairs. Matching is one-to-one, and mentees and
+   mentors don't choose each other. Once a pair is approved it shows under **Your match** /
+   **Your mentees** on the dashboard.
+5. **Work together.**
+   - **Dashboard:** your match, a *To do* list of pre-/post-work that's open and not yet
+     submitted, a month calendar with sessions, due dates, and meetings, upcoming items, and
+     resource links.
+   - **Messages:** a thread with your match. Mentors schedule meetings from the thread (and can
+     cancel them), and the meetings show on both calendars.
+   - **Modules:** the list shows every module with its date and status pills. Opening one shows
+     three steps in order:
+     1. **Pre-work:** mentees can submit it (text and/or a file) at any time and update it
+        until they're done.
+     2. **Session:** at the live session, mentees enter the check-in code staff show them.
+     3. **Post-work:** locked until the session's start time. It then opens like pre-work.
+
+     Mentors don't submit. They see each prompt plus their mentees' submissions and files, and
+     the list shows "N/M mentees submitted".
+6. **Reminders by email** (via `flask send-reminders` or the cron endpoint), each sent at most
+   once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), and messages
+   left unread for a while.
+
+### Staff
+
+Staff land on **Overview** and work through the cycle from the top nav:
+
+- **Applicants:** read each application and accept or reject it (with notes). The last
+  decision can be undone.
+- **People:** search mentees and mentors and open anyone's dashboard as they see it.
+- **Matching:** *Auto-propose* runs the engine over everyone accepted and unmatched, or propose
+  for one mentee. Open a pair to see the score breakdown, then **approve** (final), **reject**
+  (needs a reason; the pair is never proposed again), or cancel proposals. Rejections and ends
+  can be undone.
+- **Modules:** create a module with a date, location, check-in code, and optional pre-/post-work
+  prompts and due dates. On a module page, staff see the check-in code to display at the session.
+- **Reports:** attendance and pre-/post-work counts per module, plus totals.
+
+### Admin (`backend` role)
+
+Admins can open every staff page, plus **/admin**:
+
+- **Dashboard:** account totals, logins by role over the last 7 and 30 days, accounts that never
+  logged in, recent activity and sign-ups, and the staff roster.
+- **User Audit:** every account with its activity. Deactivating an account signs the person out
+  everywhere, blocks login, and drops them from matching. Accounts are deactivated, never deleted.
+- **New user:** create staff or admin accounts with a temporary password to share with them.
+- **Reports:** account-level reporting.
 
 ## Prerequisites
 
@@ -52,7 +119,7 @@ any migration there.
 ```bash
 export FLASK_APP=wsgi              # Windows PowerShell: $env:FLASK_APP="wsgi"
 flask db upgrade                   # creates/updates tables in whichever DB .env points at
-flask seed                         # demo cohort, agreement, a module, staff, mentors, mentees
+flask seed                         # demo cohort, agreement, a module, admin, staff, mentors, mentees
 ```
 
 `flask seed` does nothing if the database already has data.
@@ -72,7 +139,8 @@ All demo accounts use the password `password123`.
 
 | Role | Email |
 | --- | --- |
-| Staff | `staff.admin@example.org` |
+| Admin | `backend.admin@example.org` |
+| Staff | `staff.admin@example.org` (also `jamie.torres@example.org`, never logged in; `dana.whitfield@example.org`, deactivated) |
 | Mentor | `priya.raman@example.org`, `marcus.lee@example.org`, `elena.ortiz@example.org`, `sam.okafor@example.org` |
 | Mentee | `jordan.kim@example.org`, `avery.patel@example.org`, `riley.chen@example.org`, `taylor.brooks@example.org`, `morgan.diaz@example.org` (pending review) |
 
@@ -80,7 +148,9 @@ Quick tour:
 1. As **staff**: go to **Applicants** and accept Morgan, then **Matching** → *Auto-propose* → approve.
 2. As jordan.kim's mentor: open **Messages** and schedule a meeting. As **jordan.kim**: see it on the
    dashboard calendar, open **Modules** → *Updating your Resume*, submit pre-work, and check in with code `RES01`.
-3. As **staff**: open **Reports** to see the attendance, submission, and rating counts.
+   Post-work stays locked until the session's start time.
+3. As **staff**: open **Reports** to see the attendance and submission counts.
+4. As **admin**: open **User Audit** to see every account's activity, and deactivate or reactivate one.
 
 ## Everyday commands
 
@@ -104,14 +174,17 @@ app/
   models.py       all tables (docs/SCHEMA.md)
   taxonomy.py     dropdown/tag vocabularies used by profiles and matching
   auth.py         register / login / logout, role_required
-  intake.py       profiles, applications, digital agreements
+  intake.py       onboarding gate, profiles, applications, digital agreements
+  linkedin.py     LinkedIn PDF parsing into profile suggestions
   matching.py     scoring, ranking, one-to-one assignment
   embeddings.py   OpenAI embeddings of free-text answers, for the text part of the score
-  program.py      modules, prework/postwork, check-ins, messaging, meetings, feedback
+  program.py      modules, pre-/post-work, check-ins, messaging, meetings
   reminders.py    idempotent reminder sweep
-  staff.py        applicant review, match approval, modules, reports
-  routes.py       landing, dashboard, /healthz, cron endpoint
+  staff.py        applicant review, people, match approval, modules, reports
+  admin.py        account metrics, user audit, (de)activation, creating staff accounts
+  routes.py       landing, dashboard, application edits, /healthz, cron endpoint
   storage.py      file uploads (local disk or S3)
+  types.py        vector column type (pgvector on Postgres, JSON on SQLite)
   notify.py       email (console or SES)
   seed.py         demo data
   templates/      Jinja + Tailwind via CDN (no frontend build)

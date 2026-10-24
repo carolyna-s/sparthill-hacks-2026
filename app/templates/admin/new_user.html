@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, csrf, field, input_cls, btn %}
+{% block content %}
+<div class="max-w-xl mx-auto">
+  <a href="{{ url_for('admin.users') }}" class="text-sm text-brand-600">← User audit</a>
+  <h1 class="text-2xl font-semibold mt-2 mb-5">New staff account</h1>
+  {% call card() %}
+  <form method="post">
+    {{ csrf() }}
+    {% call field("Name", required=True) %}
+      <input name="name" value="{{ form.name }}" required maxlength="120" class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("Email", required=True) %}
+      <input name="email" type="email" value="{{ form.email }}" required maxlength="255" class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("Role", required=True) %}
+      <select name="role" class="{{ input_cls() }}">
+        <option value="staff" {{ 'selected' if form.role != 'backend' }}>Staff: reviews applicants, matches, modules</option>
+        <option value="backend" {{ 'selected' if form.role == 'backend' }}>Admin: everything staff can do, plus manage accounts</option>
+      </select>
+    {% endcall %}
+    {% call field("Temporary password", required=True, hint="at least 8 characters; share it with them directly") %}
+      <input name="password" type="text" minlength="8" required autocomplete="off" class="{{ input_cls() }} font-mono">
+    {% endcall %}
+    <div class="flex justify-end">{{ btn("Create account") }}</div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

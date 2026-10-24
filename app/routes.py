@@ -27,6 +27,8 @@ def landing():
 @bp.get("/dashboard")
 @login_required
 def dashboard():
+    if current_user.is_backend:
+        return redirect(url_for("admin.dashboard"))
     if current_user.is_staff:
         return redirect(url_for("staff.overview"))
     next_step = signup_next_step(current_user)

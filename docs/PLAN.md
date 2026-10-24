@@ -1,6 +1,6 @@
 # Mentorship Platform: Plan
 
-Updated Oct 23, 2026 (rev 3: matching pipeline, confirmation, schema live)
+Updated Oct 24, 2026 (rev 4: admin role, post-work gating; rev 3: matching pipeline, confirmation, schema live)
 
 ## 1. Goal
 
@@ -12,10 +12,11 @@ much of the cycle automated as possible. Staff keep the final say on every match
 | Intake | Separate mentor and mentee sign-up, profiles, applications, agreements, resume/LinkedIn-PDF import | Profiles, applications, and agreements are built. LinkedIn PDF import is built; resume import is planned (§6) |
 | Matching | 4-stage pipeline: hard filters → structured score → embedding similarity → LLM context scaling | Schema live in Supabase. Basic engine built; pipeline planned (§4) |
 | Match review | Staff approve or deny every proposed pair. A deny requires feedback, which the algorithm learns from | Approve, and deny with required reason + explanation (stored, pair excluded from re-proposal) built, plus a per-participant dashboard view for staff. Percent view, auto re-match, and load view planned (§5) |
-| Program tools | Prework/postwork, check-ins, reminders, messaging, **automated match emails**, **mentee confirm/withdraw** | Built except match emails and confirmation (§5.5–5.6) |
+| Program tools | Prework/postwork, check-ins, reminders, messaging, **automated match emails**, **mentee confirm/withdraw** | Built except match emails and confirmation (§5.5–5.6). Post-work opens once the session starts. Module ratings were removed from the module page |
 | Resources | Tab of school resources for mentees | Planned (§7) |
 | Site assistant | LLM chatbot that helps users find their way around | Planned (§8) |
-| Reporting | Participation, satisfaction, mentor load | Participation and satisfaction built. Load view planned |
+| Reporting | Participation, satisfaction, mentor load | Participation built. Satisfaction reporting has no ratings source now. Load view planned |
+| Admin | Account management for the `backend` role | User audit, (de)activation, staff account creation, and account reports built. Matching config and taxonomy editing planned |
 
 ## 2. Roles
 

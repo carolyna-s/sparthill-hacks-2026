@@ -169,10 +169,8 @@ def matching_page():
     approved = db.session.query(Match).filter_by(status="approved").order_by(Match.decided_at.desc()).all()
     rejected = (db.session.query(MatchFeedback).filter_by(kind="deny")
                 .order_by(MatchFeedback.created_at.desc()).limit(20).all())
-    messaged = {mid for (mid,) in db.session.query(Message.match_id).distinct()}
     return render_template("staff/matching.html", unmatched=unmatched, rankings=rankings, mentors=mentors,
-                           proposed=proposed, approved=approved, rejected=rejected,
-                           messaged=messaged)
+                           proposed=proposed, approved=approved, rejected=rejected)
 
 
 @bp.get("/matches/<int:match_id>")
@@ -235,18 +233,16 @@ def propose_one():
     return redirect(url_for("staff.matching_page"))
 
 
-# decision: (status it applies to, status it leads to). The last three undo the first three.
+# decision: (status it applies to, status it leads to). The last two undo reject and end.
+# Approval is final: the pair sees the match right away, so the way out is ending it.
 DECISIONS = {"approve": ("proposed", "approved"), "reject": ("proposed", "rejected"),
              "end": ("approved", "ended"),
-             "unapprove": ("approved", "proposed"), "unreject": ("rejected", "proposed"),
-             "reopen": ("ended", "approved")}
-UNDO = {"approve": "unapprove", "reject": "unreject", "end": "reopen"}
+             "unreject": ("rejected", "proposed"), "reopen": ("ended", "approved")}
+UNDO = {"reject": "unreject", "end": "reopen"}
 
 
 def _undo_blocker(m: Match, decision: str) -> str | None:
     """Why this undo can't happen right now, if it can't."""
-    if decision == "unapprove" and db.session.query(Message).filter_by(match_id=m.id).first():
-        return "They've already started messaging, so the approval can't be undone. End the match instead."
     if decision in ("unreject", "reopen"):
         other = (db.session.query(Match)
                  .filter(Match.mentee_id == m.mentee_id, Match.id != m.id,
@@ -273,13 +269,12 @@ def decide_match(match_id: int, decision: str):
         flash(blocker, "error")
         return redirect(back)
     pair = f"{m.mentee.name} → {m.mentor.name}"
-    if decision in ("unapprove", "unreject"):
-        if decision == "unreject":
-            # The rejection is taken back, so it shouldn't teach the matching anything or block the pair.
-            denials = db.session.query(MatchFeedback).filter_by(match_id=m.id, kind="deny")
-            ids = [f.id for f in denials]
-            db.session.query(MatchExclusion).filter(MatchExclusion.feedback_id.in_(ids)).delete()
-            denials.delete()
+    if decision == "unreject":
+        # The rejection is taken back, so it shouldn't teach the matching anything or block the pair.
+        denials = db.session.query(MatchFeedback).filter_by(match_id=m.id, kind="deny")
+        ids = [f.id for f in denials]
+        db.session.query(MatchExclusion).filter(MatchExclusion.feedback_id.in_(ids)).delete()
+        denials.delete()
         m.status, m.decided_by_id, m.decided_at = "proposed", None, None
         db.session.commit()
         flash(f"Undone: {pair} is back in the proposals.", "ok")
@@ -294,7 +289,7 @@ def decide_match(match_id: int, decision: str):
                                  reason=reason, comment=comment)
         db.session.add(feedback)
         db.session.flush()
-        if (m.mentee_id, m.mentor_id) not in matching.excluded_pairs():
+        if not db.session.query(MatchExclusion).filter_by(mentee_id=m.mentee_id, mentor_id=m.mentor_id).first():
             db.session.add(MatchExclusion(mentee_id=m.mentee_id, mentor_id=m.mentor_id,
                                           cohort_id=m.cohort_id, feedback_id=feedback.id))
     m.status, m.decided_by_id, m.decided_at = DECISIONS[decision][1], current_user.id, utcnow()

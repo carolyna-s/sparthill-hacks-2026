@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{% from "admin/_macros.html" import when, account_status, toggle_active, stat, by_role_table with context %}
+{% block content %}
+<div class="flex justify-between items-center mb-5">
+  <h1 class="text-2xl font-semibold">Admin dashboard</h1>
+  <a href="{{ url_for('admin.new_user') }}" class="text-sm bg-brand-600 text-white rounded px-3 py-1.5">New staff account</a>
+</div>
+<dl class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5 text-sm">
+  {{ stat("Accounts", totals.accounts, url_for('admin.users')) }}
+  {{ stat("Active in the last 7 days", totals.active_week) }}
+  {{ stat("New in the last 7 days", totals.new_week) }}
+  {{ stat("Deactivated", totals.inactive, url_for('admin.users', status='inactive')) }}
+</dl>
+
+{% call card("Accounts by role") %}{{ by_role_table(by_role) }}{% endcall %}
+
+<div class="grid md:grid-cols-2 gap-5">
+  {% call card("Staff & admin accounts") %}
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Last login</th><th>Status</th><th></th></tr></thead>
+    {% for u in staff %}
+    <tr class="border-t">
+      <td class="py-2"><a class="text-brand-600" href="{{ url_for('admin.user', user_id=u.id) }}">{{ u.name }}</a>
+        <div class="text-xs text-slate-500">{{ role_labels[u.role] }}</div></td>
+      <td>{{ when(u.last_login_at) }}</td>
+      <td>{{ account_status(u) }}</td>
+      <td class="text-right">{{ toggle_active(u, next=url_for('admin.dashboard')) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endcall %}
+
+  <div>
+    {% call card("Recently active") %}
+    {% for u in recent %}
+      <a href="{{ url_for('admin.user', user_id=u.id) }}" class="flex justify-between text-sm py-1 hover:text-brand-700">
+        <span>{{ u.name }} <span class="text-xs text-slate-500">· {{ role_labels[u.role] }}</span></span>{{ when(u.last_seen_at) }}</a>
+    {% else %}<p class="text-sm text-slate-500">Nobody has been active yet.</p>{% endfor %}
+    {% endcall %}
+    {% call card("New sign-ups this week") %}
+    {% for u in signups %}
+      <a href="{{ url_for('admin.user', user_id=u.id) }}" class="flex justify-between text-sm py-1 hover:text-brand-700">
+        <span>{{ u.name }} <span class="text-xs text-slate-500">· {{ role_labels[u.role] }}</span></span>{{ when(u.created_at) }}</a>
+    {% else %}<p class="text-sm text-slate-500">No new accounts this week.</p>{% endfor %}
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}

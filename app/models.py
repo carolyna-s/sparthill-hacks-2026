@@ -36,6 +36,10 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(10), nullable=False)  # mentee | mentor | staff | backend
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     last_seen_at = db.Column(db.DateTime)  # bumped on each request, at most once a minute
+    last_login_at = db.Column(db.DateTime)
+    # Admins (backend) deactivate accounts instead of deleting them. Overrides UserMixin.is_active,
+    # so Flask-Login won't log an inactive user in.
+    is_active = db.Column(db.Boolean, default=True, server_default=db.true(), nullable=False)
 
     profile = db.relationship("Profile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     application = db.relationship("Application", back_populates="user", uselist=False,
@@ -59,7 +63,8 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id: str) -> User | None:
-    return db.session.get(User, int(user_id))
+    user = db.session.get(User, int(user_id))
+    return user if user and user.is_active else None  # deactivating signs them out everywhere
 
 
 def _tags():
@@ -188,7 +193,8 @@ class Match(db.Model):
 
     proposed -> approved | rejected (staff deny)
     approved -> withdrawn (mentee withdraws after release) | ended
-    Staff can undo approve, reject and end, and cancel (delete) a proposal.
+    Approval is final (end the match instead). Staff can undo reject and end, and cancel (delete) a proposal.
+    Ended and withdrawn pairs aren't proposed again.
     Scores are 0-100: final = (alpha*structured + (1-alpha)*semantic) * context_multiplier.
     """
 
@@ -244,6 +250,10 @@ class Event(db.Model):
     postwork_due = db.Column(db.DateTime)
 
     cohort = db.relationship("Cohort")
+
+    def is_open(self, kind: str) -> bool:
+        """Prework can be submitted any time; postwork only once the session has started."""
+        return kind != "postwork" or utcnow() >= self.starts_at
 
 
 class Submission(db.Model):

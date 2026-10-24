@@ -26,7 +26,8 @@ proposals with the Hungarian algorithm (the assignment with the highest total sc
 covers only the pool: mentees and mentors with no approved or pending match. Every mentee is
 matched while free mentors last; a pair that fails a hard filter is used only when nothing
 compatible is left, and is flagged for staff. Pairs staff rejected (match_exclusion) are
-never proposed again.
+never proposed again, and neither is a pair whose match was ended or withdrawn; reopening the
+match is the way back. Deactivated accounts (user.is_active) are left out of the pool.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -208,7 +209,7 @@ def accepted_profiles(role: str) -> dict[int, dict]:
     rows = (db.session.query(Profile)
             .join(User, User.id == Profile.user_id)
             .join(Application, Application.user_id == User.id)
-            .filter(User.role == role, Application.status == "accepted")
+            .filter(User.role == role, User.is_active, Application.status == "accepted")
             .all())
     return {p.user_id: _tags(p) for p in rows}
 
@@ -227,8 +228,10 @@ def unmatched_mentee_ids() -> set[int]:
 
 
 def excluded_pairs() -> set[tuple[int, int]]:
-    """(mentee_id, mentor_id) pairs staff rejected."""
-    return {(me, mt) for me, mt in db.session.query(MatchExclusion.mentee_id, MatchExclusion.mentor_id)}
+    """(mentee_id, mentor_id) pairs staff rejected, or whose match was ended or withdrawn."""
+    rejected = db.session.query(MatchExclusion.mentee_id, MatchExclusion.mentor_id)
+    finished = db.session.query(Match.mentee_id, Match.mentor_id).filter(Match.status.in_(("ended", "withdrawn")))
+    return {(me, mt) for me, mt in rejected.union(finished)}
 
 
 def ranking_for(mentee_id: int, limit: int = 5) -> list[Candidate]:

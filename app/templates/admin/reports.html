@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card %}
+{% from "staff/_summary.html" import summary, avg %}
+{% from "admin/_macros.html" import when, account_status, by_role_table with context %}
+{% block content %}
+<div class="flex justify-between items-center mb-5">
+  <h1 class="text-2xl font-semibold">Reports</h1>
+  <a href="{{ url_for('staff.reports') }}" class="text-sm text-brand-600">Module participation →</a>
+</div>
+{{ summary(report) }}
+
+{% call card("Logins by role") %}{{ by_role_table(by_role) }}{% endcall %}
+
+{% call card("Application funnel") %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr><th class="py-1">Role</th>{% for s in statuses %}<th class="capitalize">{{ s }}</th>{% endfor %}</tr></thead>
+  {% for role in ['mentee', 'mentor'] %}
+  <tr class="border-t">
+    <td class="py-2">{{ role_labels[role] }}s</td>
+    {% for s in statuses %}<td>{{ funnel.get((role, s), 0) }}</td>{% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% endcall %}
+
+{% call card("Staff workload") %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr><th class="py-1">Name</th><th>Applications reviewed</th><th>Approved</th><th>Rejected</th><th>Ended</th><th>Last login</th><th>Status</th></tr></thead>
+  {% for u in staff %}
+  <tr class="border-t">
+    <td class="py-2"><a class="text-brand-600" href="{{ url_for('admin.user', user_id=u.id) }}">{{ u.name }}</a>
+      <span class="text-xs text-slate-500">· {{ role_labels[u.role] }}</span></td>
+    <td>{{ reviews.get(u.id, 0) }}</td>
+    {% for s in ['approved', 'rejected', 'ended'] %}<td>{{ decisions.get((u.id, s), 0) }}</td>{% endfor %}
+    <td>{{ when(u.last_login_at) }}</td>
+    <td>{{ account_status(u) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="text-xs text-slate-500 mt-3">Match counts are by each match's current status and the last person who decided it.</p>
+{% endcall %}
+{% endblock %}

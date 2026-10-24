@@ -63,8 +63,8 @@
   <tr class="border-t">
     <td class="py-2"><a class="hover:text-brand-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">{{ m.mentee.name }} ↔ {{ m.mentor.name }}</a></td><td>{{ m.score }}</td>
     <td class="text-right whitespace-nowrap"><a class="text-brand-600 mr-3" href="{{ url_for('program.messages', match_id=m.id) }}">Messages</a>
-      {% if m.id not in messaged %}{{ post(url_for('staff.decide_match', match_id=m.id, decision='unapprove'), "Undo approval") }}{% endif %}
-      {{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End") }}</td>
+      {{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End",
+               confirm="Are you sure you want to proceed with ending the match (" ~ m.mentee.name ~ " → " ~ m.mentor.name ~ ")?") }}</td>
   </tr>
   {% else %}<tr><td class="text-slate-500">None yet.</td></tr>{% endfor %}
 </table>
@@ -75,7 +75,8 @@
   <div class="border-t first:border-t-0 py-3">
     <div class="flex justify-between items-start gap-3">
       <a class="text-sm font-medium hover:text-indigo-600" href="{{ url_for('staff.match_review', match_id=f.match_id) }}">{{ f.match.mentee.name }} → {{ f.match.mentor.name }}</a>
-      {% if f.match.status == 'rejected' %}{{ post(url_for('staff.decide_match', match_id=f.match_id, decision='unreject'), "Undo rejection") }}{% endif %}
+      {% if f.match.status == 'rejected' %}{{ post(url_for('staff.decide_match', match_id=f.match_id, decision='unreject'), "Undo rejection",
+                                                    confirm="Are you sure you want to proceed with undoing the rejection (" ~ f.match.mentee.name ~ " → " ~ f.match.mentor.name ~ ")?") }}{% endif %}
     </div>
     <div class="mt-1">{{ denial(f) }}</div>
   </div>

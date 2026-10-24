@@ -50,7 +50,8 @@ def todo_for(user: User) -> list[tuple[Event, str]]:
     for e in db.session.query(Event).order_by(Event.starts_at):
         for kind in Submission.KINDS:
             prompt, due = getattr(e, f"{kind}_prompt"), getattr(e, f"{kind}_due")
-            if prompt and due and (e.id, kind) not in done and due > now - timedelta(days=7):
+            if (prompt and due and e.is_open(kind) and (e.id, kind) not in done
+                    and due > now - timedelta(days=7)):
                 out.append((e, kind))
     return out
 
@@ -88,11 +89,10 @@ def module(event_id: int):
     e = db.get_or_404(Event, event_id)
     subs = {s.kind: s for s in db.session.query(Submission).filter_by(event_id=e.id, user_id=current_user.id)}
     attended = db.session.query(Attendance).filter_by(event_id=e.id, user_id=current_user.id).first()
-    fb = db.session.query(Feedback).filter_by(event_id=e.id, user_id=current_user.id).first()
     mentees = mentees_of(current_user) if current_user.role == "mentor" else []
     mentee_subs = {(s.user_id, s.kind): s for s in db.session.query(Submission)
                    .filter(Submission.event_id == e.id, Submission.user_id.in_([u.id for u in mentees]))}
-    return render_template("program/module.html", e=e, subs=subs, attended=attended, feedback=fb,
+    return render_template("program/module.html", e=e, subs=subs, attended=attended,
                            mentees=mentees, mentee_subs=mentee_subs)
 
 
@@ -104,6 +104,9 @@ def submit(event_id: int, kind: str):
         abort(404)
     if current_user.role != "mentee":  # mentors see what's assigned and their mentees' work, but don't submit
         abort(403)
+    if not e.is_open(kind):
+        flash("Post-work opens after the session.", "error")
+        return redirect(url_for("program.module", event_id=e.id))
     sub = (db.session.query(Submission).filter_by(event_id=e.id, user_id=current_user.id, kind=kind).first()
            or Submission(event_id=e.id, user_id=current_user.id, kind=kind))
     sub.body = request.form.get("body", "").strip()

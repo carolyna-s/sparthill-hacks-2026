@@ -1,7 +1,9 @@
 """HTTP flows for each role, checking what ends up in the database."""
 
 import io
+from datetime import timedelta
 
+from app import matching
 from app.extensions import db
 from app.models import (Application, Attendance, Event, Match, MatchExclusion, MatchFeedback, Meeting, Message,
                         ReminderLog, Submission, User, utcnow)
@@ -394,32 +396,40 @@ def test_undo_auto_propose_and_cancel(client):
     assert db.session.query(Match).count() == 0
 
 
-def test_undo_approve_reject_and_end(client):
+def test_undo_reject_and_end(client):
     login(client, "staff.admin@example.org")
     client.post("/staff/matching/propose-all")
     a, b = db.session.query(Match).filter_by(status="proposed").limit(2).all()
 
     client.post(f"/staff/matches/{a.id}/approve")
-    client.post(f"/staff/matches/{a.id}/unapprove")
-    assert a.status == "proposed" and a.decided_at is None
+    assert client.post(f"/staff/matches/{a.id}/unapprove").status_code == 400  # approval is final
+    assert a.status == "approved"
+    client.post(f"/staff/matches/{a.id}/end")
+    client.post(f"/staff/matches/{a.id}/reopen")
+    assert a.status == "approved"
 
     client.post(f"/staff/matches/{b.id}/reject", data={"reason": "fit_concern", "comment": "Mismatch."})
     client.post(f"/staff/matches/{b.id}/unreject")
     assert b.status == "proposed"
     assert db.session.query(MatchFeedback).count() == 0 and db.session.query(MatchExclusion).count() == 0
 
-    client.post(f"/staff/matches/{a.id}/approve")
-    client.post(f"/staff/matches/{a.id}/end")
-    client.post(f"/staff/matches/{a.id}/reopen")
-    assert a.status == "approved"
     client.post(f"/staff/matches/{a.id}/reopen")  # already approved: refused, nothing breaks
     assert a.status == "approved"
 
-    login(client, a.mentee.email)
-    client.post(f"/messages/{a.id}", data={"body": "Hi!"})
+
+def test_ended_pair_is_not_proposed_again(client):
     login(client, "staff.admin@example.org")
-    client.post(f"/staff/matches/{a.id}/unapprove")
-    assert a.status == "approved"  # they've started talking, so End is the way out
+    client.post("/staff/matching/propose-all")
+    m = db.session.query(Match).filter_by(status="proposed").first()
+    pair = (m.mentee_id, m.mentor_id)
+    client.post(f"/staff/matches/{m.id}/approve")
+    client.post(f"/staff/matches/{m.id}/end")
+
+    assert m.mentee_id in matching.unmatched_mentee_ids()  # both are back in the pool...
+    assert all(c.mentor_id != m.mentor_id for c in matching.ranking_for(m.mentee_id, limit=None))
+    client.post("/staff/matching/propose-all")
+    proposed = {(x.mentee_id, x.mentor_id) for x in db.session.query(Match).filter_by(status="proposed")}
+    assert pair not in proposed  # ...but not with each other
 
 
 def test_undo_application_decision(client):
@@ -490,6 +500,19 @@ def test_event_submission_checkin_feedback(client):
     client.post("/feedback", data={"event_id": event.id, "rating": 4})
     login(client, "staff.admin@example.org")
     assert b"4.0" in client.get("/staff/reports").data
+
+
+def test_postwork_opens_after_session(client):
+    event = db.session.query(Event).first()
+    login(client, "jordan.kim@example.org")
+    assert b"Opens after the session" in client.get(f"/modules/{event.id}").data
+    client.post(f"/modules/{event.id}/submit/postwork", data={"body": "too early"})
+    assert db.session.query(Submission).count() == 0
+
+    event.starts_at = utcnow() - timedelta(hours=1)
+    db.session.commit()
+    client.post(f"/modules/{event.id}/submit/postwork", data={"body": "done"})
+    assert db.session.query(Submission).one().kind == "postwork"
 
 
 def test_mentor_sees_assignments_and_mentee_submissions(client):
@@ -596,3 +619,71 @@ def test_linkedin_import_suggests_but_does_not_save(client):
     resp = client.post("/profile/1", data={**about, "linkedin_pdf": (io.BytesIO(b"not a pdf"), "x.pdf")},
                        content_type="multipart/form-data")
     assert resp.headers["Location"].endswith("/profile/1")
+
+
+def test_admin_pages_are_admin_only(client):
+    login(client, "staff.admin@example.org")
+    assert client.get("/admin/").status_code == 403
+    login(client, "backend.admin@example.org")
+    assert client.get("/dashboard").headers["Location"].endswith("/admin/")
+    staff = db.session.query(User).filter_by(email="staff.admin@example.org").one()
+    mentee = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    for path in ["/admin/", "/admin/users", "/admin/users?role=staff&status=inactive&q=dana", "/admin/users/new",
+                 f"/admin/users/{staff.id}", f"/admin/users/{mentee.id}", "/admin/reports", "/admin/profile",
+                 "/staff/"]:
+        assert client.get(path).status_code == 200, path
+
+
+def test_login_records_last_login(client):
+    login(client, "jamie.torres@example.org")
+    assert db.session.query(User).filter_by(email="jamie.torres@example.org").one().last_login_at is not None
+
+
+def test_admin_creates_staff_account(client):
+    login(client, "backend.admin@example.org")
+    client.post("/admin/users/new", data={"name": "Pat Lane", "email": "Pat@Example.org", "role": "staff",
+                                          "password": "short"})
+    assert not db.session.query(User).filter_by(email="pat@example.org").first()
+    client.post("/admin/users/new", data={"name": "Pat Lane", "email": "Pat@Example.org", "role": "staff",
+                                          "password": "temporary1"})
+    assert db.session.query(User).filter_by(email="pat@example.org").one().role == "staff"
+    assert client.post("/admin/users/new", data={"name": "X", "email": "x@example.org", "role": "mentor",
+                                                 "password": "temporary1"}).status_code == 400
+
+    login(client, "pat@example.org", "temporary1")
+    assert client.get("/staff/").status_code == 200
+
+
+def test_deactivated_account_is_signed_out_and_unmatched(client):
+    mentor = db.session.query(User).filter_by(email="priya.raman@example.org").one()
+    login(client, mentor.email)
+    assert client.get("/dashboard").status_code == 200
+
+    admin = client.application.test_client()
+    login(admin, "backend.admin@example.org")
+    admin.post(f"/admin/users/{mentor.id}/active", data={"active": "0"})
+    assert mentor.is_active is False
+    assert client.get("/dashboard").status_code == 302  # existing session is gone
+    assert b"This account has been deactivated" in login(client, mentor.email).data
+    assert mentor.id not in matching.open_slots()
+
+    admin.post(f"/admin/users/{mentor.id}/active", data={"active": "1"})
+    login(client, mentor.email)
+    assert client.get("/dashboard").status_code == 200
+
+
+def test_admin_cannot_deactivate_self(client):
+    login(client, "backend.admin@example.org")
+    me = db.session.query(User).filter_by(email="backend.admin@example.org").one()
+    client.post(f"/admin/users/{me.id}/active", data={"active": "0"})
+    assert me.is_active
+
+
+def test_admin_changes_own_password(client):
+    login(client, "backend.admin@example.org")
+    client.post("/admin/profile", data={"current_password": "wrong", "new_password": "newpass123",
+                                        "confirm_password": "newpass123"})
+    client.post("/admin/profile", data={"current_password": "password123", "new_password": "newpass123",
+                                        "confirm_password": "newpass123"})
+    me = db.session.query(User).filter_by(email="backend.admin@example.org").one()
+    assert me.check_password("newpass123")

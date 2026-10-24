@@ -21,7 +21,7 @@
     {% if action == 'approve' %}
       {% call card("Approve this match?") %}
         <p class="text-sm text-slate-600 mb-4">They become an active match and can start messaging each other.
-          You can undo this until they've exchanged messages.</p>
+          This is final: to undo it later, end the match.</p>
         <div class="flex gap-2 items-center">
           {{ post(url_for('staff.decide_match', match_id=m.id, decision='approve'), "Confirm approval", "primary",
                   next=url_for('staff.matching_page')) }}
@@ -73,11 +73,13 @@
     {% else %}
       {% call card("Decision") %}
         <p class="text-sm mb-3">{{ m.status|capitalize }}{% if m.decided_at %} on {{ m.decided_at.strftime('%b %d, %H:%M') }}{% endif %}.</p>
-        {% set undo = {'approved': ('unapprove', 'Undo approval'), 'rejected': ('unreject', 'Undo rejection'),
-                       'ended': ('reopen', 'Reopen match')}.get(m.status) %}
-        {% if undo %}{{ post(url_for('staff.decide_match', match_id=m.id, decision=undo[0]), "↶ " ~ undo[1]) }}
+        {% set undo = {'rejected': ('unreject', 'Undo rejection', 'undoing the rejection'),
+                       'ended': ('reopen', 'Reopen match', 'reopening the match')}.get(m.status) %}
+        {% if undo %}{{ post(url_for('staff.decide_match', match_id=m.id, decision=undo[0]), "↶ " ~ undo[1],
+                         confirm="Are you sure you want to proceed with " ~ undo[2] ~ " (" ~ m.mentee.name ~ " → " ~ m.mentor.name ~ ")?") }}
           <p class="text-xs text-slate-500 mt-2">{{ 'Puts it back in the proposals.' if m.status != 'ended' else 'Makes it an active match again.' }}</p>{% endif %}
-        {% if m.status == 'approved' %}<div class="mt-3">{{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End match") }}</div>{% endif %}
+        {% if m.status == 'approved' %}<div class="mt-3">{{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End match",
+                         confirm="Are you sure you want to proceed with ending the match (" ~ m.mentee.name ~ " → " ~ m.mentor.name ~ ")?") }}</div>{% endif %}
       {% endcall %}
     {% endif %}
 

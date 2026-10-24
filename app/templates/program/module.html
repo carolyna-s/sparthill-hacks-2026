@@ -1,77 +1,116 @@
 {% extends "base.html" %}
-{% from "_macros.html" import csrf, card, btn, input_cls %}
-{% block content %}
-<a href="{{ url_for('program.modules') }}" class="text-sm text-brand-600 hover:underline">← Modules</a>
-<h1 class="text-2xl font-semibold mt-1">{{ e.title }}</h1>
-<p class="text-slate-500 text-sm mb-5">{{ e.starts_at.strftime('%A %b %d, %H:%M') }} · {{ e.location }}</p>
-{% if e.description %}<p class="mb-5">{{ e.description }}</p>{% endif %}
+{% from "_macros.html" import csrf, btn, input_cls %}
 
-{% if current_user.role == "mentor" %}
-{% for kind in ['prework', 'postwork'] if e[kind ~ '_prompt'] %}
+{# One step of the module, full width: pre-work, the session, then post-work. #}
+{% macro step(n, title, meta=None, status=None, tone='neutral', last=False) %}
+{% set tones = {'done': 'bg-emerald-50 text-emerald-700 ring-emerald-200', 'todo': 'bg-gold-50 text-gold-700 ring-gold-200',
+                'locked': 'bg-slate-50 text-slate-500 ring-slate-200', 'neutral': 'bg-brand-50 text-brand-700 ring-brand-100'} %}
+<li class="relative pl-12 {{ '' if last else 'pb-8' }}">
+  {% if not last %}<span class="absolute left-[15px] top-9 bottom-0 w-px bg-slate-200" aria-hidden="true"></span>{% endif %}
+  <span class="absolute left-0 top-0 h-8 w-8 rounded-full grid place-items-center text-sm font-semibold
+               {{ 'bg-emerald-600 text-white' if tone == 'done' else 'bg-brand-600 text-white' if tone in ('todo', 'neutral') else 'bg-slate-200 text-slate-500' }}">
+    {{ '✓' if tone == 'done' else n }}
+  </span>
+  <section class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 sm:p-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+      <div>
+        <h2 class="font-semibold text-slate-900">{{ title }}</h2>
+        {% if meta %}<p class="text-xs text-slate-500 mt-0.5">{{ meta }}</p>{% endif %}
+      </div>
+      {% if status %}<span class="rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset {{ tones[tone] }}">{{ status }}</span>{% endif %}
+    </div>
+    {{ caller() }}
+  </section>
+</li>
+{% endmacro %}
+
+{% macro work_step(kind, n, last=False) %}
   {% set label = kind.replace('work', '-work')|capitalize %}
-  {% call card(label ~ " · due " ~ e[kind ~ '_due'].strftime('%b %d %H:%M') if e[kind ~ '_due'] else label) %}
-  <p class="text-sm mb-4">{{ e[kind ~ '_prompt'] }}</p>
-  <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Your mentees' submissions</h3>
-  <ul class="divide-y divide-slate-100">
-    {% for u in mentees %}
-      {% set s = mentee_subs.get((u.id, kind)) %}
-      <li class="py-3 text-sm">
-        <div class="flex items-baseline justify-between gap-3">
-          <span class="font-medium">{{ u.name }}</span>
-          {% if s %}<span class="text-xs text-emerald-700">✓ Submitted {{ s.submitted_at.strftime('%b %d %H:%M') }}</span>
-          {% else %}<span class="text-xs text-slate-500">Not submitted yet</span>{% endif %}
+  {% set due = e[kind ~ '_due'] %}
+  {% set s = subs.get(kind) %}
+  {% if current_user.role == 'mentee' %}
+    {% set status, tone = ('Submitted', 'done') if s else ('Opens after session', 'locked') if not e.is_open(kind) else ('To do', 'todo') %}
+  {% else %}
+    {% set status, tone = None, 'neutral' %}
+  {% endif %}
+  {% call step(n, label, "Due " ~ due.strftime('%A, %b %d · %I:%M %p') if due else None, status, tone, last) %}
+    <p class="text-sm text-slate-700 whitespace-pre-line">{{ e[kind ~ '_prompt'] }}</p>
+
+    {% if current_user.role == 'mentor' %}
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-5 mb-1">Your mentees' submissions</h3>
+      <ul class="divide-y divide-slate-100">
+        {% for u in mentees %}
+          {% set ms = mentee_subs.get((u.id, kind)) %}
+          <li class="py-3 text-sm">
+            <div class="flex items-baseline justify-between gap-3">
+              <span class="font-medium">{{ u.name }}</span>
+              {% if ms %}<span class="text-xs text-emerald-700">✓ Submitted {{ ms.submitted_at.strftime('%b %d %H:%M') }}</span>
+              {% else %}<span class="text-xs text-slate-500">Not submitted yet</span>{% endif %}
+            </div>
+            {% if ms and ms.body %}<p class="mt-1 whitespace-pre-line text-slate-700">{{ ms.body }}</p>{% endif %}
+            {% if ms and ms.file_name %}<p class="mt-1 text-xs">Attached: <a class="text-brand-600 hover:underline" href="{{ url_for('program.submission_file', submission_id=ms.id) }}">{{ ms.file_name }}</a></p>{% endif %}
+          </li>
+        {% else %}<li class="py-2 text-sm text-slate-500">You don't have a mentee yet.</li>{% endfor %}
+      </ul>
+    {% elif current_user.role == 'mentee' %}
+      {% if not e.is_open(kind) %}
+        <p class="mt-4 text-sm text-slate-500 bg-slate-50 rounded-lg px-4 py-3">Opens after the session on {{ e.starts_at.strftime('%b %d %H:%M') }}.</p>
+      {% else %}
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('program.submit', event_id=e.id, kind=kind) }}" class="mt-4 space-y-3">
+        {{ csrf() }}
+        <textarea name="body" rows="4" placeholder="Your response" class="{{ input_cls() }}">{{ s.body if s else '' }}</textarea>
+        <div class="flex flex-wrap items-center gap-3">
+          <input type="file" name="file" class="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-slate-200">
+          {% if s and s.file_name %}<span class="text-xs text-slate-500">Attached: <a class="text-brand-600 hover:underline" href="{{ url_for('program.submission_file', submission_id=s.id) }}">{{ s.file_name }}</a></span>{% endif %}
         </div>
-        {% if s and s.body %}<p class="mt-1 whitespace-pre-line text-slate-700">{{ s.body }}</p>{% endif %}
-        {% if s and s.file_name %}<p class="mt-1 text-xs">Attached: <a class="text-brand-600 hover:underline" href="{{ url_for('program.submission_file', submission_id=s.id) }}">{{ s.file_name }}</a></p>{% endif %}
-      </li>
-    {% else %}<li class="py-2 text-sm text-slate-500">You don't have a mentee yet.</li>{% endfor %}
-  </ul>
+        <div class="flex items-center gap-3">
+          {{ btn("Update" if s else "Submit") }}
+          {% if s %}<span class="text-xs text-emerald-700">Submitted {{ s.submitted_at.strftime('%b %d %H:%M') }}</span>{% endif %}
+        </div>
+      </form>
+      {% endif %}
+    {% endif %}
   {% endcall %}
-{% endfor %}
-{% elif not current_user.is_staff %}
-<div class="grid md:grid-cols-2 gap-5">
-  <div>
-  {% for kind in ['prework', 'postwork'] if e[kind ~ '_prompt'] %}
-    {% set label = kind.replace('work', '-work')|capitalize %}
-    {% call card(label ~ " · due " ~ e[kind ~ '_due'].strftime('%b %d %H:%M') if e[kind ~ '_due'] else label) %}
-    <p class="text-sm mb-3">{{ e[kind ~ '_prompt'] }}</p>
-    {% set s = subs.get(kind) %}
-    <form method="post" enctype="multipart/form-data" action="{{ url_for('program.submit', event_id=e.id, kind=kind) }}">
-      {{ csrf() }}
-      <textarea name="body" rows="4" class="{{ input_cls() }} mb-2">{{ s.body if s else '' }}</textarea>
-      <input type="file" name="file" class="text-sm mb-3 block">
-      {% if s and s.file_name %}<p class="text-xs text-slate-500 mb-2">Attached: <a class="text-brand-600" href="{{ url_for('program.submission_file', submission_id=s.id) }}">{{ s.file_name }}</a></p>{% endif %}
-      {{ btn("Update" if s else "Submit") }}
-      {% if s %}<span class="text-xs text-emerald-700 ml-2">Submitted {{ s.submitted_at.strftime('%b %d %H:%M') }}</span>{% endif %}
-    </form>
+{% endmacro %}
+
+{% block content %}
+<a href="{{ url_for('program.modules') }}" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-700">
+  <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>Modules
+</a>
+
+<header class="mt-3 mb-8">
+  <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-brand-950">{{ e.title }}</h1>
+  <p class="text-sm text-slate-500 mt-1">{{ e.starts_at.strftime('%A, %b %d · %I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}</p>
+  {% if e.description %}<p class="text-slate-700 mt-4 leading-relaxed">{{ e.description }}</p>{% endif %}
+</header>
+
+{% set has_pre, has_post = e.prework_prompt, e.postwork_prompt %}
+<ol>
+  {% if has_pre %}{{ work_step('prework', 1) }}{% endif %}
+
+  {% if current_user.is_staff %}
+    {% call step(2 if has_pre else 1, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'), last=not has_post) %}
+      <p class="text-sm text-slate-600">Check-in code</p>
+      <p class="font-mono text-3xl font-semibold tracking-widest text-brand-900 mt-1">{{ e.checkin_code }}</p>
     {% endcall %}
-  {% endfor %}
-  </div>
-  <div>
-    {% call card("Check in") %}
+  {% elif current_user.role == 'mentee' %}
+    {% call step(2 if has_pre else 1, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'),
+                 'Checked in' if attended else None, 'done' if attended else 'neutral', last=not has_post) %}
       {% if attended %}<p class="text-sm text-emerald-700">Checked in at {{ attended.checked_in_at.strftime('%H:%M') }}.</p>
       {% else %}
-      <form method="post" action="{{ url_for('program.checkin', event_id=e.id) }}" class="flex gap-2">
+      <form method="post" action="{{ url_for('program.checkin', event_id=e.id) }}" class="flex flex-wrap gap-2">
         {{ csrf() }}
-        <input name="code" placeholder="Code shown at the session" class="{{ input_cls() }} max-w-xs uppercase">
+        <input name="code" placeholder="Code shown at the session" class="{{ input_cls() }} max-w-xs uppercase placeholder:normal-case">
         {{ btn("Check in") }}
       </form>
       {% endif %}
     {% endcall %}
-    {% call card("How was it?") %}
-      {% if feedback %}<p class="text-sm">You rated this {{ feedback.rating }}/5. Thanks!</p>
-      {% else %}
-      <form method="post" action="{{ url_for('program.feedback') }}" class="space-y-2">
-        {{ csrf() }}<input type="hidden" name="event_id" value="{{ e.id }}">
-        <div class="flex gap-3 text-sm">{% for r in range(1, 6) %}<label><input type="radio" name="rating" value="{{ r }}" required> {{ r }}</label>{% endfor %}</div>
-        <textarea name="comment" rows="2" placeholder="Optional comment" class="{{ input_cls() }}"></textarea>
-        {{ btn("Send feedback", "secondary") }}
-      </form>
-      {% endif %}
+  {% else %}
+    {% call step(2 if has_pre else 1, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'), last=not has_post) %}
+      <p class="text-sm text-slate-600">{{ e.location or 'Location to be announced.' }}</p>
     {% endcall %}
-  </div>
-</div>
-{% else %}
-  {% call card() %}<p class="text-sm">Check-in code: <span class="font-mono text-lg">{{ e.checkin_code }}</span></p>{% endcall %}
-{% endif %}
+  {% endif %}
+
+  {% if has_post %}{{ work_step('postwork', 3 if has_pre else 2, last=True) }}{% endif %}
+</ol>
 {% endblock %}

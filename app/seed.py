@@ -71,6 +71,43 @@ MATCHING = {
                         looking_for="Accountability while I build my first startup."),
 }
 
+# Extra accepted, unmatched people for trying out "Run matching": `flask --app wsgi seed-pool`.
+# Sofia fits Nadia best, Noor fits Grace, and Ethan shares a slot with all three mentors but
+# fits Diego, so the solver has to weigh the whole pool rather than each mentee's top pick.
+POOL_MENTORS = [
+    ("Nadia Haddad", "UX research lead", ["design", "research", "healthcare"],
+     ["switch careers", "land first job"], ["confidence", "public speaking", "writing"],
+     dict(availability=["Tuesday - afternoon", "Thursday - afternoon", "Sunday - afternoon"],
+          languages=["English", "Arabic"], industry="Design Services", education_paths=["4-year university"],
+          school="State University", looking_for="Help career changers find their footing in UX.")),
+    ("Diego Alvarez", "Startup founder", ["entrepreneurship", "consulting", "software engineering"],
+     ["start a business", "build a network"], ["negotiation", "networking", "leadership"],
+     dict(availability=["Wednesday - evening", "Thursday - afternoon"], languages=["English", "Spanish"],
+          industry="Software Development", education_paths=["bootcamp / self-taught"], school="City College",
+          looking_for="Founders who want honest feedback on early ideas.")),
+    ("Grace Liu", "Policy analyst", ["public policy", "research", "education"],
+     ["apply to grad school", "find a niche"], ["writing", "time management", "resume and interviewing"],
+     dict(availability=["Sunday - afternoon", "Wednesday - evening"], languages=["English", "Mandarin"],
+          industry="Government Administration", education_paths=["graduate degree", "first-generation college student"],
+          school="State University", looking_for="Students weighing a policy master's or PhD.")),
+]
+
+POOL_MENTEES = [
+    ("Sofia Ramirez", ["design", "healthcare"], ["switch careers"], ["confidence", "public speaking"],
+     dict(availability=["Tuesday - afternoon", "Sunday - afternoon"], languages=["English", "Spanish"],
+          industry="Hospitals and Health Care", education_paths=["returning / adult learner"],
+          school="State University", looking_for="Moving from nursing into health-tech design.")),
+    ("Ethan Walker", ["entrepreneurship", "software engineering"], ["start a business", "build a network"],
+     ["negotiation", "networking"],
+     dict(availability=["Wednesday - evening", "Thursday - afternoon", "Sunday - afternoon"], languages=["English"],
+          industry="Software Development", education_paths=["bootcamp / self-taught"], school="City College",
+          looking_for="Someone who has raised money and can pressure-test my pitch.")),
+    ("Noor Ahmed", ["public policy", "education"], ["apply to grad school"], ["writing", "time management"],
+     dict(availability=["Sunday - afternoon"], languages=["English", "Arabic"], industry="Higher Education",
+          education_paths=["first-generation college student"], school="State University",
+          looking_for="Choosing between MPP programs and writing my statement.")),
+]
+
 DEFAULT_WEIGHTS = {"pathways": 0.15, "interests": 0.15, "major": 0.10, "years_experience": 0.10,
                    "languages": 0.10, "clubs": 0.10, "student_groups": 0.10, "goals": 0.10,
                    "organizations": 0.05, "concentration": 0.05}
@@ -107,6 +144,45 @@ def _user(name: str, role: str) -> User:
     return u
 
 
+def _activity(reviewer: User) -> None:
+    """Spread out sign-up and login times and mark accepted applications reviewed, so the
+    admin pages have history to show. Jamie Torres and Morgan Diaz have never logged in."""
+    now = utcnow()
+    for i, u in enumerate(db.session.query(User).order_by(User.id)):
+        u.created_at = now - timedelta(days=30 - 2 * i)
+        if u.email not in ("jamie.torres@example.org", "morgan.diaz@example.org"):
+            u.last_login_at = now - timedelta(hours=5 * i + 1)
+            u.last_seen_at = u.last_login_at + timedelta(minutes=20)
+        if u.application and u.application.status == "accepted":
+            u.application.reviewed_by_id, u.application.reviewed_at = reviewer.id, now - timedelta(days=3)
+
+
+def seed_pool() -> int:
+    """Add POOL_MENTORS and POOL_MENTEES as accepted and unmatched. Needs `seed` first.
+    Skips anyone already there; returns how many were added."""
+    cohort = db.session.query(Cohort).order_by(Cohort.id).first()
+    agreement = db.session.query(Agreement).order_by(Agreement.id).first()
+    if not cohort or not agreement:
+        raise RuntimeError("run `flask seed` first")
+    people = ([(n, "mentor", dict(headline=h, interests=", ".join(i), goals=g, development_areas=a, **m))
+               for n, h, i, g, a, m in POOL_MENTORS]
+              + [(n, "mentee", dict(interests=", ".join(i), goals=g, development_areas=a, **m))
+                 for n, i, g, a, m in POOL_MENTEES])
+    added = 0
+    for name, role, profile in people:
+        u = _user(name, role)
+        if u.application:
+            continue
+        u.profile = Profile(**profile)
+        u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
+                                    reviewed_at=utcnow(), answers={})
+        db.session.flush()
+        db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
+        added += 1
+    db.session.commit()
+    return added
+
+
 def seed() -> None:
     db.create_all()
     if db.session.query(Cohort).first():
@@ -117,8 +193,10 @@ def seed() -> None:
                           body="I agree to attend scheduled sessions, complete prework and postwork, "
                                "communicate respectfully, and keep mentor-mentee conversations confidential.")
     db.session.add_all([cohort, agreement])
-    _user("Staff Admin", "staff")
+    staff = _user("Staff Admin", "staff")
     _user("Backend Admin", "backend")
+    _user("Jamie Torres", "staff")  # never logged in
+    _user("Dana Whitfield", "staff").is_active = False
     db.session.add(MatchingConfig(is_active=True, weights=DEFAULT_WEIGHTS, settings=DEFAULT_SETTINGS,
                                   notes="Initial weights from docs/PLAN.md"))
     _questions()
@@ -148,6 +226,9 @@ def seed() -> None:
                                     })
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
+
+    db.session.flush()
+    _activity(staff)
 
     now = utcnow().replace(minute=0, second=0, microsecond=0)
     db.session.add(Event(

@@ -8,15 +8,18 @@ What the framework doesn't do yet, roughly in priority order.
   loop or HTMX; WebSockets (API Gateway WebSocket or Flask-SocketIO) only if needed.
 - **Charts on reports.** Reporting is tables and totals. Add trends over time (attendance
   per event, rating distribution) and CSV export.
-- **Satisfaction surveys.** Only 1–5 ratings + comment today. Mid- and end-of-program
-  surveys with structured questions would give richer reporting.
+- **Satisfaction surveys.** Nothing collects ratings right now (the 1–5 form on the module page
+  was removed), so the rating columns in staff reports stay empty. Mid- and end-of-program
+  surveys with structured questions would replace it.
+- **Module end times.** Modules only have a start time, so post-work opens when the session
+  starts. Add a duration or end time to open it when the session ends.
 - **Mentee choice.** Mentees can't see or rank their top mentors; staff decide. Consider
   showing mentees their top 3 and letting them pick or rank before staff approval.
 - **Matching inputs.** Add availability/time zone, location, identity or background
   preferences, and hard constraints (e.g. same organization excluded).
 - **Cohorts.** Events and matches carry `cohort_id`, but pages don't filter by cohort yet.
-- **Staff tooling.** No UI to edit agreements, questions, or the taxonomy; no way to
-  promote users to staff; no editing or deleting events.
+- **Staff tooling.** No UI to edit agreements, questions, or the taxonomy; no editing or
+  deleting modules. (Admins can create staff accounts but can't change an existing user's role.)
 - **Notifications in-app.** Reminders are email only.
 
 ## Platform

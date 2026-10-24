@@ -1,6 +1,6 @@
 # Schema
 
-Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `c6557a04922b`;
+Defined in `app/models.py`. Migrations live in `migrations/versions/` (head: `b5d8e2f4a6c1`;
 Supabase `sparthill-hackathon` is at `c6557a04922b` as of Oct 23, 2026). Table names are the snake_cased
 class names. Timestamps are naive UTC.
 
@@ -13,7 +13,10 @@ bypasses RLS.
 
 **user**: one account per person.
 `email` (unique), `password_hash`, `name`, `role` (`mentee` | `mentor` | `staff` | `backend`),
-`created_at`. Backend users can do everything staff can, plus edit configuration.
+`created_at`, `last_login_at`, `last_seen_at` (bumped at most once a minute), `is_active`
+(false = deactivated: can't log in, signed out, left out of matching). Backend users ("Admin" in
+the UI) can do everything staff can, plus create staff accounts, (de)activate any account, and
+edit configuration (`/admin`).
 
 **profile**: one per mentee/mentor (`user_id` unique). Holds the answers to the **hard
 (dropdown) questions**. List fields are JSON arrays of `taxonomy_term.value`s. For mentees they
@@ -72,7 +75,7 @@ embedded), `embedding_model`, `updated_at`.
 | Column | Notes |
 | --- | --- |
 | `mentee_id`, `mentor_id`, `cohort_id` | |
-| `status` | `proposed` → `approved` \| `rejected` (staff deny); `approved` → `withdrawn` \| `ended`. Staff can undo approve / reject / end; cancelling a proposal deletes the row |
+| `status` | `proposed` → `approved` \| `rejected` (staff deny); `approved` → `withdrawn` \| `ended`. Approval is final; staff can undo reject / end, and ended / withdrawn pairs aren't re-proposed; cancelling a proposal deletes the row |
 | `score` | final 0–100 shown to staff |
 | `structured_score`, `semantic_score`, `context_multiplier` | stage 2, stage 3, stage 4 (docs/PLAN.md §4) |
 | `score_breakdown` | per-feature similarities and shared values |
@@ -113,7 +116,9 @@ pathways → their major), `sort`, `is_active`. Unique per (kind, value, parent)
 ## Program
 
 **event**: a module (shown as **Modules** in the app). `title`, `description`, `starts_at`, `location`, `checkin_code`,
-`prework_prompt` / `prework_due`, `postwork_prompt` / `postwork_due`.
+`prework_prompt` / `prework_due`, `postwork_prompt` / `postwork_due`. There's no end time:
+post-work can only be submitted once `starts_at` has passed (`Event.is_open`), while pre-work is
+open from creation.
 
 **submission**: `event_id` + `user_id` + `kind` (`prework` | `postwork`; unique), `body`,
 `file_key`, `file_name`, `submitted_at`.
@@ -126,6 +131,8 @@ pathways → their major), `sort`, `is_active`. Unique per (kind, value, parent)
 `starts_at`, `note`, `created_by_id`, `created_at`.
 
 **feedback**: satisfaction ratings. `user_id`, `event_id` *or* `match_id`, `rating` (1–5), `comment`.
+No page collects ratings right now (the module page's rating form was removed), so the table only
+holds older rows.
 
 **reminder_log**: `user_id` + `key` (unique; e.g. `prework:3`, `match-release:12`), `sent_at`.
 Dedupes reminders and automated emails.

@@ -20,13 +20,14 @@ def create_app(overrides: dict | None = None) -> Flask:
     csrf.init_app(app)
 
     from . import models  # noqa: F401  registers tables with SQLAlchemy
+    from .admin import bp as admin_bp
     from .auth import bp as auth_bp
     from .intake import bp as intake_bp
     from .program import bp as program_bp
     from .routes import bp as main_bp
     from .staff import bp as staff_bp
 
-    for bp in (main_bp, auth_bp, intake_bp, program_bp, staff_bp):
+    for bp in (main_bp, auth_bp, intake_bp, program_bp, staff_bp, admin_bp):
         app.register_blueprint(bp)
 
     from .taxonomy import TAXONOMY
@@ -90,5 +91,15 @@ def create_app(overrides: dict | None = None) -> Flask:
 
         seed()
         click.echo("seeded")
+
+    @app.cli.command("seed-pool")
+    def seed_pool_cmd():
+        """Add 3 accepted, unmatched mentors and 3 mentees to try out matching."""
+        from .seed import seed_pool
+
+        try:
+            click.echo(f"added {seed_pool()} people to the matching pool")
+        except RuntimeError as e:
+            raise click.ClickException(str(e))
 
     return app

@@ -8,7 +8,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from flask_login import current_user
 
 from . import embeddings, linkedin, storage
-from .auth import role_required
+from .auth import change_password, role_required
 from .extensions import db
 from .models import Agreement, AgreementSignature, Application, Cohort, User, utcnow
 from .program import unsigned_agreements
@@ -216,18 +216,10 @@ def account_profile():
                 flash("Profile changes saved.", "ok")
                 return redirect(url_for("intake.account_profile"))
         elif action == "password":
-            current_password = request.form.get("current_password", "")
-            new_password = request.form.get("new_password", "")
-            confirm_password = request.form.get("confirm_password", "")
-            if not current_user.check_password(current_password):
-                flash("Your current password is incorrect.", "error")
-            elif len(new_password) < 8:
-                flash("New password must be at least 8 characters.", "error")
-            elif new_password != confirm_password:
-                flash("New password and confirmation do not match.", "error")
+            error = change_password(current_user, request.form)
+            if error:
+                flash(error, "error")
             else:
-                current_user.set_password(new_password)
-                db.session.commit()
                 flash("Password changed successfully.", "ok")
                 return redirect(url_for("intake.account_profile"))
         else:

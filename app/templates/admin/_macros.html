@@ -1,0 +1,40 @@
+{% from "_macros.html" import csrf %}
+
+{% macro when(dt) %}{% if dt %}<span title="{{ dt.strftime('%b %d, %Y %H:%M') }} UTC">{{ dt|ago }}</span>{% else %}<span class="text-slate-400">never</span>{% endif %}{% endmacro %}
+
+{% macro account_status(u) %}
+<span class="text-xs rounded px-2 py-0.5 {{ 'bg-emerald-100 text-emerald-800' if u.is_active else 'bg-red-100 text-red-800' }}">{{ 'active' if u.is_active else 'deactivated' }}</span>
+{% endmacro %}
+
+{# Activate / deactivate button. Hidden for your own account. #}
+{% macro toggle_active(u, next=None) %}
+{% if u.id != current_user.id %}
+<form method="post" action="{{ url_for('admin.set_active', user_id=u.id) }}" class="inline"
+      onsubmit='return confirm({{ (("Deactivate " ~ u.name ~ "? They will be signed out and can no longer log in.") if u.is_active else ("Reactivate " ~ u.name ~ "?"))|tojson }})'>
+  {{ csrf() }}
+  <input type="hidden" name="active" value="{{ '0' if u.is_active else '1' }}">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  <button class="text-xs font-medium rounded px-2 py-1 {{ 'border border-red-300 text-red-700 hover:bg-red-50' if u.is_active else 'border border-emerald-300 text-emerald-700 hover:bg-emerald-50' }}">{{ 'Deactivate' if u.is_active else 'Activate' }}</button>
+</form>
+{% endif %}
+{% endmacro %}
+
+{% macro stat(label, value, href=None) %}
+<div class="bg-white border rounded-lg p-4">
+  <dt class="text-slate-500">{% if href %}<a href="{{ href }}" class="hover:text-brand-700">{{ label }} →</a>{% else %}{{ label }}{% endif %}</dt>
+  <dd class="text-2xl font-semibold">{{ value }}</dd>
+</div>
+{% endmacro %}
+
+{% macro by_role_table(by_role) %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr><th class="py-1">Role</th><th>Accounts</th><th>Logged in · 7 days</th><th>· 30 days</th><th>Never logged in</th><th>Deactivated</th></tr></thead>
+  {% for r in by_role %}
+  <tr class="border-t">
+    <td class="py-2"><a class="text-brand-600" href="{{ url_for('admin.users', role=r.role) }}">{{ role_labels[r.role] }}</a></td>
+    <td>{{ r.total }}</td><td>{{ r.week }}</td><td>{{ r.month }}</td><td>{{ r.never }}</td>
+    <td>{% if r.inactive %}<a class="text-red-700" href="{{ url_for('admin.users', role=r.role, status='inactive') }}">{{ r.inactive }}</a>{% else %}0{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}

@@ -38,7 +38,11 @@
         <span class="font-bold text-base tracking-tight text-brand-900 hidden sm:inline">Spartan Mentorship Program</span>
       </a>
       {% if current_user.is_authenticated %}
-        {% if current_user.is_staff %}
+        {% if current_user.is_backend %}
+          <a href="{{ url_for('admin.dashboard') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
+          <a href="{{ url_for('admin.users') }}" class="text-slate-600 hover:text-brand-700">User Audit</a>
+          <a href="{{ url_for('admin.reports') }}" class="text-slate-600 hover:text-brand-700">Reports</a>
+        {% elif current_user.is_staff %}
           <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-brand-700">Overview</a>
           <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-brand-700">Applicants</a>
           <a href="{{ url_for('staff.people') }}" class="text-slate-600 hover:text-brand-700">People</a>
@@ -56,8 +60,11 @@
             <span class="h-7 w-7 rounded-full bg-brand-600 text-white text-xs font-semibold grid place-items-center">{{ current_user.name[:1]|upper }}</span>
           </summary>
           <div class="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-            <p class="px-4 py-2 text-xs text-slate-500 capitalize border-b border-slate-100">{{ current_user.role }}</p>
-            {% if not current_user.is_staff %}
+            <p class="px-4 py-2 text-xs text-slate-500 capitalize border-b border-slate-100">{{ 'admin' if current_user.is_backend else current_user.role }}</p>
+            {% if current_user.is_backend %}
+              <a href="{{ url_for('admin.profile') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Profile</a>
+              <a href="{{ url_for('staff.overview') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Staff tools</a>
+            {% elif not current_user.is_staff %}
               <a href="{{ url_for('intake.account_profile') }}" class="block px-4 py-2 text-slate-700 hover:bg-brand-50">Profile</a>
             {% endif %}
             <form method="post" action="{{ url_for('auth.logout') }}">
@@ -80,7 +87,8 @@
     {# Staff actions offer a one-click undo on the page right after them (staff.py _offer_undo). #}
     {% set undo = session.pop('undo', None) if current_user.is_authenticated and current_user.is_staff %}
     {% if undo %}
-      <form method="post" action="{{ undo.action }}" class="mb-4 rounded px-4 py-2 text-sm bg-slate-800 text-white flex items-center gap-3">
+      <form method="post" action="{{ undo.action }}"
+            onsubmit='return confirm({{ ("Are you sure you want to proceed with undoing this? (" ~ undo.text ~ ")")|tojson }})' class="mb-4 rounded px-4 py-2 text-sm bg-slate-800 text-white flex items-center gap-3">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% for name, value in undo.fields.items() %}
           {% for v in (value if value is sequence and value is not string else [value]) %}

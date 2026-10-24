@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import card, csrf, field, input_cls %}
+{% from "admin/_macros.html" import when with context %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+  <h1 class="text-2xl font-semibold mb-5">Profile</h1>
+
+  {% call card("Account information") %}
+  <div class="grid sm:grid-cols-2 gap-x-3">
+    {% call field("Name") %}
+      <input value="{{ current_user.name }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+    {% endcall %}
+    {% call field("Email") %}
+      <input value="{{ current_user.email }}" readonly class="{{ input_cls() }} bg-slate-100 text-slate-500 cursor-not-allowed">
+    {% endcall %}
+  </div>
+  <dl class="grid grid-cols-3 gap-4 text-sm">
+    <div><dt class="text-slate-500">Role</dt><dd>{{ role_labels[current_user.role] }}</dd></div>
+    <div><dt class="text-slate-500">Joined</dt><dd>{{ current_user.created_at.strftime('%b %d, %Y') }}</dd></div>
+    <div><dt class="text-slate-500">Last login</dt><dd>{{ when(current_user.last_login_at) }}</dd></div>
+  </dl>
+  {% endcall %}
+
+  {% call card("Change Password") %}
+  <form method="post" class="space-y-1">
+    {{ csrf() }}
+    {% call field("Current password") %}
+      <input name="current_password" type="password" autocomplete="current-password" required class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("New password") %}
+      <input name="new_password" type="password" autocomplete="new-password" minlength="8" required class="{{ input_cls() }}">
+    {% endcall %}
+    {% call field("Confirm new password") %}
+      <input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required class="{{ input_cls() }}">
+    {% endcall %}
+    <div class="flex justify-end">
+      <button class="text-sm font-medium rounded-lg px-3 py-2 bg-brand-600 text-white hover:bg-brand-700">Change Password</button>
+    </div>
+  </form>
+  {% endcall %}
+</div>
+{% endblock %}

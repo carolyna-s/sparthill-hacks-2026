@@ -1,7 +1,7 @@
 """Email + password accounts with three roles: mentee, mentor, staff.
 
-Staff accounts can't self-register; create them with `flask seed` or promote a user in the
-database. Swap in Amazon Cognito later by replacing this blueprint; the rest of the app
+Staff accounts can't self-register; a backend admin creates them (app/admin.py), or use
+`flask seed`. Deactivated accounts can't log in. Swap in Amazon Cognito later by replacing this blueprint; the rest of the app
 only relies on Flask-Login's `current_user` and `role_required`.
 """
 
@@ -13,7 +13,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, u
 from flask_login import current_user, login_required, login_user, logout_user
 
 from .extensions import db
-from .models import Profile, User
+from .models import Profile, User, utcnow
 
 bp = Blueprint("auth", __name__)
 
@@ -60,8 +60,12 @@ def register():
 def login():
     if request.method == "POST":
         user = db.session.query(User).filter_by(email=request.form["email"].strip().lower()).first()
-        if user and user.check_password(request.form["password"]):
+        if user and user.check_password(request.form["password"]) and not user.is_active:
+            flash("This account has been deactivated. Contact the program staff.", "error")
+        elif user and user.check_password(request.form["password"]):
             login_user(user, remember=True)
+            user.last_login_at = utcnow()
+            db.session.commit()
             if user.role in ("mentee", "mentor"):
                 from .intake import profile_setup_complete
 
@@ -71,6 +75,19 @@ def login():
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("main.dashboard"))
         flash("Wrong email or password.", "error")
     return render_template("auth/login.html")
+
+
+def change_password(user: User, form) -> str | None:
+    """Apply a change-password form (current, new, confirm). Returns the error, if any."""
+    if not user.check_password(form.get("current_password", "")):
+        return "Your current password is incorrect."
+    if len(form.get("new_password", "")) < 8:
+        return "New password must be at least 8 characters."
+    if form.get("new_password") != form.get("confirm_password"):
+        return "New password and confirmation do not match."
+    user.set_password(form["new_password"])
+    db.session.commit()
+    return None
 
 
 @bp.post("/logout")
