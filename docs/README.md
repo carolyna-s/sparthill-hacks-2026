@@ -46,8 +46,8 @@ created by an admin.
      Mentors don't submit. They see each prompt plus their mentees' submissions and files, and
      the list shows "N/M mentees submitted".
 6. **Reminders by email** (via `flask send-reminders` or the cron endpoint), each sent at most
-   once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), and messages
-   left unread for a while.
+   once: unsigned agreements, open pre-/post-work due soon (accepted mentees only), messages
+   left unread for a while, and scheduled meetings starting within 24 hours (both people).
 7. **Instant emails** (templates in `app/templates/email/`): both people get one when their match is
    confirmed, and 3 minutes after a message the recipient gets "You have new messages from X" if
    they haven't opened the thread yet, at most once an hour per thread.

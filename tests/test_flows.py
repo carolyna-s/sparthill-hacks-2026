@@ -1259,3 +1259,18 @@ def test_login_and_register_redirect_when_already_signed_in(client):
     resp = client.post("/login", data={"email": "staff.admin@example.org", "password": PASSWORD})
     assert resp.headers["Location"].endswith("/dashboard")
     assert b"Jordan" in client.get("/dashboard", follow_redirects=True).data
+
+
+def test_meeting_reminder_sent_once_within_24_hours(client):
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    soon = Meeting(match_id=match.id, starts_at=utcnow() + timedelta(hours=20), created_by_id=match.mentor_id)
+    later = Meeting(match_id=match.id, starts_at=utcnow() + timedelta(hours=30), created_by_id=match.mentor_id)
+    db.session.add_all([soon, later])
+    db.session.commit()
+    send_due_reminders()
+    reminded = {r.user_id for r in db.session.query(ReminderLog).filter_by(key=f"meeting:{soon.id}")}
+    assert reminded == {match.mentee_id, match.mentor_id}
+    assert not db.session.query(ReminderLog).filter_by(key=f"meeting:{later.id}").count()
+    send_due_reminders()
+    assert db.session.query(ReminderLog).filter_by(key=f"meeting:{soon.id}").count() == 2
