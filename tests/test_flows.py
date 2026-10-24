@@ -297,6 +297,33 @@ def test_staff_pages_are_staff_only(client):
     assert b"Staff Overview" in overview
 
 
+def test_messages_locked_until_match_is_approved(client):
+    jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    mentor = db.session.query(User).filter_by(role="mentor").first()
+    login(client, jordan.email)
+    page = client.get("/messages/")
+    assert page.status_code == 200 and b"Messages aren't available yet" in page.data
+    assert b"You don't have a mentor yet" in page.data
+    assert b"locked until your mentorship is approved" in client.get("/dashboard", follow_redirects=True).data
+
+    m = Match(mentee_id=jordan.id, mentor_id=mentor.id, score=80, score_breakdown={})
+    db.session.add(m)
+    db.session.commit()
+    assert b"Staff are reviewing a mentor for you" in client.get("/messages/").data
+    assert mentor.name.encode() not in client.get(f"/messages/{m.id}").data  # proposal isn't revealed
+
+    m.status = "released"
+    db.session.commit()
+    page = client.get(f"/messages/{m.id}").data
+    assert b"awaiting" in page and b"Confirm your match" in page
+
+    m.status = "approved"
+    db.session.commit()
+    resp = client.get("/messages/")
+    assert resp.headers["Location"].endswith(f"/messages/{m.id}")
+    assert b"locked until your mentorship is approved" not in client.get(f"/messages/{m.id}").data
+
+
 def test_review_match_and_message(client):
     login(client, "staff.admin@example.org")
     assert db.session.query(Application).filter_by(status="submitted").count() == 0
@@ -337,6 +364,33 @@ def test_review_match_and_message(client):
 
     outsider = next(m for m in proposed if not m.includes(match.mentor))
     assert client.get(f"/messages/{outsider.id}").status_code == 404
+
+
+def test_unread_message_badge_and_live_thread_updates(client):
+    from app import matching
+
+    match = matching.propose_all()[0]
+    match.status = "approved"
+    message = Message(match_id=match.id, sender_id=match.mentor_id, body="Unread first message")
+    db.session.add(message)
+    db.session.commit()
+
+    login(client, match.mentee.email)
+    dashboard = client.get("/dashboard")
+    assert b"1 unread message" in dashboard.data
+    assert client.get("/messages/unread-count").json == {"unread_count": 1}
+    thread_page = client.get(f"/messages/{match.id}")
+    assert b"Unread first message" in thread_page.data
+    assert message.read_at is not None
+
+    db.session.add(Message(match_id=match.id, sender_id=match.mentor_id, body="Arrived while open"))
+    db.session.commit()
+    update = client.get(f"/messages/{match.id}/updates")
+    assert update.status_code == 200
+    assert "Arrived while open" in update.json["messages_html"]
+    assert update.json["unread_count"] == 0
+    assert b"data-live-messages" in thread_page.data
+    assert b"data-message-updates-url" in thread_page.data
 
 
 def test_mentor_schedules_meeting_on_both_calendars(client):
@@ -611,21 +665,19 @@ def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
     assert b"Mentee Withdrawn" in client.get("/staff/matching").data
 
 
-def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+def test_mentee_cannot_release_confirmed_mentor(client):
     login(client, "staff.admin@example.org")
     match = matching.propose_all()[0]
     client.post(f"/staff/matches/{match.id}/approve")
     login(client, match.mentee.email)
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    dashboard = client.get("/dashboard")
+    assert b"Release mentor" not in dashboard.data
     response = client.post(f"/matches/{match.id}/release")
 
-    assert response.status_code == 302
-    assert match.status == "withdrawn"
-    assert match.mentee_id in matching.unmatched_mentee_ids()
-    assert all(candidate.mentor_id != match.mentor_id
-               for candidate in matching.ranking_for(match.mentee_id, limit=None))
-    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
-    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+    assert response.status_code == 404
+    assert match.status == "approved"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
 
 
 def test_undo_auto_propose_and_cancel(client):

@@ -181,7 +181,7 @@ def _reject_released_match(match: Match, user: User, reason: str, comment: str) 
 def release_mentor(match_id: int):
     match = db.get_or_404(Match, match_id)
     if (current_user.role != "mentee" or match.mentee_id != current_user.id
-            or match.status != "approved"):
+            or match.status != "approved" or match.mentee_confirmed_at is not None):
         abort(404)
 
     now = utcnow()

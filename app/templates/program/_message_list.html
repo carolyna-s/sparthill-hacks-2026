@@ -1,0 +1,13 @@
+{% for msg in thread %}
+  {% set mine = msg.sender_id == current_user.id %}
+  <li class="py-3">
+    <div class="flex items-baseline justify-between gap-3 text-xs text-slate-500">
+      <span class="font-medium {{ 'text-brand-600' if mine else 'text-slate-700' }}">{{ 'You' if mine else msg.sender.name }}</span>
+      <span title="{{ msg.sent_at.strftime('%b %d, %Y %H:%M') }} UTC">{{ msg.sent_at | ago }}</span>
+    </div>
+    <div class="text-sm whitespace-pre-line mt-1">{{ msg.body }}</div>
+    {% if mine %}
+      <div class="text-[11px] text-slate-400 mt-1">{% if msg.read_at %}Seen {{ msg.read_at | ago }}{% else %}Sent{% endif %}</div>
+    {% endif %}
+  </li>
+{% else %}<li class="text-sm text-slate-500 py-3">No messages yet. Say hello!</li>{% endfor %}
