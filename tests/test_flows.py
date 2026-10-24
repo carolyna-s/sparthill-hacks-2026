@@ -151,6 +151,8 @@ def test_mentee_intake_flow(client):
     blocked = client.get("/dashboard", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")
     assert b"Please complete onboarding to access Dashboard" in blocked.data
+    assert b'href="/modules"' not in blocked.data
+    assert b'href="/messages/"' not in blocked.data
     assert client.get("/profile").headers["Location"].endswith("/profile/2")  # step 1 done at sign-up
     blocked = client.get("/profile/3", follow_redirects=True)
     assert blocked.request.path.endswith("/profile/2")  # locked until step 2 is done

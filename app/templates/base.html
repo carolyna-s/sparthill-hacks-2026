@@ -52,22 +52,24 @@
           {{ nav_link("Reports", "staff.reports", ["staff.reports", "staff.event_attendance"]) }}
         {% else %}
           {{ nav_link("Dashboard", "main.dashboard", ["main.dashboard", "main.update_application", "main.match_confirmation"]) }}
-          {{ nav_link("Modules", "program.modules", ["program.modules", "program.module"]) }}
-          {% if messages_locked %}
-            <a href="{{ url_for('program.inbox') }}" title="Available once your mentorship is assigned and approved"
-               class="inline-flex items-center gap-1 {{ 'font-bold text-slate-500' if request.endpoint in ['program.inbox', 'program.messages'] else 'text-slate-400' }} hover:text-slate-600">
-              <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd"/></svg>
-              Messages<span class="sr-only"> (locked until your mentorship is approved)</span></a>
-          {% else %}
-            <a href="{{ url_for('program.inbox') }}"
-               class="inline-flex items-center gap-2 {{ 'font-bold text-brand-900' if request.endpoint in ['program.inbox', 'program.messages'] else 'text-slate-600' }} hover:text-brand-700"
-               {% if request.endpoint in ['program.inbox', 'program.messages'] %}aria-current="page"{% endif %}>
-              Messages
-              <span data-message-unread-badge
-                    data-initial-unread="{{ message_unread_count }}"
-                    class="{{ '' if message_unread_count else 'hidden' }} min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
-                    aria-label="{{ message_unread_count }} unread messages">{{ message_unread_count if message_unread_count < 100 else '99+' }}</span>
-            </a>
+          {% if profile_setup_complete %}
+            {{ nav_link("Modules", "program.modules", ["program.modules", "program.module"]) }}
+            {% if messages_locked %}
+              <a href="{{ url_for('program.inbox') }}" title="Available once your mentorship is assigned and approved"
+                 class="inline-flex items-center gap-1 {{ 'font-bold text-slate-500' if request.endpoint in ['program.inbox', 'program.messages'] else 'text-slate-400' }} hover:text-slate-600">
+                <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd"/></svg>
+                Messages<span class="sr-only"> (locked until your mentorship is approved)</span></a>
+            {% else %}
+              <a href="{{ url_for('program.inbox') }}"
+                 class="inline-flex items-center gap-2 {{ 'font-bold text-brand-900' if request.endpoint in ['program.inbox', 'program.messages'] else 'text-slate-600' }} hover:text-brand-700"
+                 {% if request.endpoint in ['program.inbox', 'program.messages'] %}aria-current="page"{% endif %}>
+                Messages
+                <span data-message-unread-badge
+                      data-initial-unread="{{ message_unread_count }}"
+                      class="{{ '' if message_unread_count else 'hidden' }} min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
+                      aria-label="{{ message_unread_count }} unread messages">{{ message_unread_count if message_unread_count < 100 else '99+' }}</span>
+              </a>
+            {% endif %}
           {% endif %}
         {% endif %}
         <details class="ml-auto relative group">
