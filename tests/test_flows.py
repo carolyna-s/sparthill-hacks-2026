@@ -606,21 +606,19 @@ def test_mentee_withdrawal_leaves_program_and_is_not_rematched(client):
     assert b"Mentee Withdrawn" in client.get("/staff/matching").data
 
 
-def test_mentee_releasing_confirmed_mentor_returns_to_pool(client):
+def test_mentee_cannot_release_confirmed_mentor(client):
     login(client, "staff.admin@example.org")
     match = matching.propose_all()[0]
     client.post(f"/staff/matches/{match.id}/approve")
     login(client, match.mentee.email)
     client.post(f"/matches/{match.id}/confirmation", data={"response": "confirm"})
+    dashboard = client.get("/dashboard")
+    assert b"Release mentor" not in dashboard.data
     response = client.post(f"/matches/{match.id}/release")
 
-    assert response.status_code == 302
-    assert match.status == "withdrawn"
-    assert match.mentee_id in matching.unmatched_mentee_ids()
-    assert all(candidate.mentor_id != match.mentor_id
-               for candidate in matching.ranking_for(match.mentee_id, limit=None))
-    feedback = db.session.query(MatchFeedback).filter_by(match_id=match.id, kind="deny").one()
-    assert (feedback.reason, feedback.wants_rematch) == ("mentee_rejection", True)
+    assert response.status_code == 404
+    assert match.status == "approved"
+    assert match.mentee_id not in matching.unmatched_mentee_ids()
 
 
 def test_undo_auto_propose_and_cancel(client):
