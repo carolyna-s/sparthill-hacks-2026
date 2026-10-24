@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from . import storage
@@ -16,6 +16,25 @@ from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback,
                      Submission, User, utcnow)
 
 bp = Blueprint("program", __name__)
+
+
+def unread_message_count(user_id: int) -> int:
+    return (db.session.query(Message)
+            .join(Match, Match.id == Message.match_id)
+            .filter(
+                Match.status == "approved",
+                (Match.mentee_id == user_id) | (Match.mentor_id == user_id),
+                Message.sender_id != user_id,
+                Message.read_at.is_(None),
+            ).count())
+
+
+@bp.app_context_processor
+def _message_notifications():
+    count = 0
+    if current_user.is_authenticated and current_user.role in ("mentee", "mentor"):
+        count = unread_message_count(current_user.id)
+    return {"message_unread_count": count}
 
 
 # --- helpers shared with the dashboard and reminders ---------------------------
@@ -198,6 +217,32 @@ def messages(match_id: int):
     meetings = (db.session.query(Meeting).filter(Meeting.match_id == m.id, Meeting.starts_at >= utcnow() - timedelta(hours=1))
                 .order_by(Meeting.starts_at).all())
     return render_template("program/messages.html", m=m, thread=thread, meetings=meetings, now=utcnow())
+
+
+@bp.get("/messages/<int:match_id>/updates")
+@login_required
+def message_updates(match_id: int):
+    m = _approved_match(match_id)
+    if m.includes(current_user):
+        (db.session.query(Message)
+         .filter(Message.match_id == m.id, Message.sender_id != current_user.id, Message.read_at.is_(None))
+         .update({"read_at": utcnow()}))
+        db.session.commit()
+    thread = db.session.query(Message).filter_by(match_id=m.id).order_by(Message.sent_at.desc()).all()
+    html = render_template("program/_message_list.html", m=m, thread=thread)
+    count = unread_message_count(current_user.id) if current_user.role in ("mentee", "mentor") else 0
+    response = jsonify(messages_html=html, unread_count=count)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@bp.get("/messages/unread-count")
+@login_required
+def unread_count():
+    count = unread_message_count(current_user.id) if current_user.role in ("mentee", "mentor") else 0
+    response = jsonify(unread_count=count)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @bp.post("/messages/<int:match_id>/meetings")

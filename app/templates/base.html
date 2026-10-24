@@ -52,7 +52,13 @@
         {% else %}
           <a href="{{ url_for('main.dashboard') }}" class="text-slate-600 hover:text-brand-700">Dashboard</a>
           <a href="{{ url_for('program.modules') }}" class="text-slate-600 hover:text-brand-700">Modules</a>
-          <a href="{{ url_for('program.inbox') }}" class="text-slate-600 hover:text-brand-700">Messages</a>
+          <a href="{{ url_for('program.inbox') }}" class="inline-flex items-center gap-2 text-slate-600 hover:text-brand-700">
+            Messages
+            <span data-message-unread-badge
+                  data-initial-unread="{{ message_unread_count }}"
+                  class="{{ '' if message_unread_count else 'hidden' }} min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-semibold leading-none text-white"
+                  aria-label="{{ message_unread_count }} unread messages">{{ message_unread_count if message_unread_count < 100 else '99+' }}</span>
+          </a>
         {% endif %}
         <details class="ml-auto relative group">
           <summary class="list-none flex items-center gap-2 cursor-pointer rounded-full border border-slate-200 pl-3 pr-1 py-1 hover:border-brand-300 [&::-webkit-details-marker]:hidden">
@@ -113,6 +119,30 @@
     </div>
   </footer>
   <script>
+    const unreadBadge = document.querySelector("[data-message-unread-badge]");
+    if (unreadBadge) {
+      const unreadCountUrl = {{ url_for("program.unread_count")|tojson }};
+      const baseTitle = document.title;
+      const showUnreadCount = (count) => {
+        unreadBadge.textContent = count > 99 ? "99+" : String(count);
+        unreadBadge.classList.toggle("hidden", count === 0);
+        unreadBadge.setAttribute("aria-label", `${count} unread message${count === 1 ? "" : "s"}`);
+        document.title = count > 0 ? `(${count}) ${baseTitle}` : baseTitle;
+      };
+      const refreshUnreadCount = async () => {
+        try {
+          const response = await fetch(unreadCountUrl, {cache: "no-store"});
+          if (!response.ok) throw new Error(`Unread count request failed (${response.status})`);
+          const data = await response.json();
+          showUnreadCount(data.unread_count);
+        } catch (error) {
+          console.error("Unable to refresh unread message count.", error);
+        }
+      };
+      showUnreadCount(Number(unreadBadge.dataset.initialUnread));
+      window.setInterval(refreshUnreadCount, 15000);
+    }
+
     document.querySelectorAll("[data-live-filter]").forEach((input) => {
       const listName = input.dataset.liveFilter;
       const table = document.querySelector(`[data-sortable-list="${listName}"]`);

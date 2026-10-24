@@ -52,21 +52,50 @@
   {{ btn("Send") }}
 </form>
 {% endif %}
-<ul class="divide-y divide-slate-100">
-  {% for msg in thread %}
-    {% set mine = msg.sender_id == current_user.id %}
-    <li class="py-3">
-      <div class="flex items-baseline justify-between gap-3 text-xs text-slate-500">
-        <span class="font-medium {{ 'text-brand-600' if mine else 'text-slate-700' }}">{{ 'You' if mine else msg.sender.name }}</span>
-        <span title="{{ msg.sent_at.strftime('%b %d, %Y %H:%M') }} UTC">{{ msg.sent_at | ago }}</span>
-      </div>
-      <div class="text-sm whitespace-pre-line mt-1">{{ msg.body }}</div>
-      {% if mine %}
-        <div class="text-[11px] text-slate-400 mt-1">{% if msg.read_at %}Seen {{ msg.read_at | ago }}{% else %}Sent{% endif %}</div>
-      {% endif %}
-    </li>
-  {% else %}<li class="text-sm text-slate-500 py-3">No messages yet. Say hello!</li>{% endfor %}
+<p class="mb-2 min-h-5 text-xs text-slate-500" data-message-sync-status aria-live="polite"></p>
+<ul class="divide-y divide-slate-100" data-live-messages
+    data-message-updates-url="{{ url_for('program.message_updates', match_id=m.id) }}">
+  {% include "program/_message_list.html" %}
 </ul>
 {% endcall %}
 </div>
+{% if m.includes(current_user) %}
+<script>
+  (() => {
+    const thread = document.querySelector("[data-live-messages]");
+    const status = document.querySelector("[data-message-sync-status]");
+    if (!thread || !status) return;
+    const updateUrl = thread.dataset.messageUpdatesUrl;
+    let updating = false;
+
+    const refreshThread = async () => {
+      if (updating || document.hidden) return;
+      updating = true;
+      try {
+        const response = await fetch(updateUrl, {cache: "no-store"});
+        if (!response.ok) throw new Error(`Message refresh failed (${response.status})`);
+        const data = await response.json();
+        thread.innerHTML = data.messages_html;
+        const badge = document.querySelector("[data-message-unread-badge]");
+        if (badge) {
+          badge.textContent = data.unread_count > 99 ? "99+" : String(data.unread_count);
+          badge.classList.toggle("hidden", data.unread_count === 0);
+          badge.setAttribute("aria-label", `${data.unread_count} unread message${data.unread_count === 1 ? "" : "s"}`);
+          const title = document.title.replace(/^\(\d+\)\s/, "");
+          document.title = data.unread_count > 0 ? `(${data.unread_count}) ${title}` : title;
+        }
+        status.textContent = "";
+      } catch (error) {
+        status.textContent = "Messages are temporarily out of date. Reconnecting…";
+        console.error("Unable to refresh the message thread.", error);
+      } finally {
+        updating = false;
+      }
+    };
+
+    window.setInterval(refreshThread, 5000);
+    document.addEventListener("visibilitychange", refreshThread);
+  })();
+</script>
+{% endif %}
 {% endblock %}
