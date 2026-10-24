@@ -8,13 +8,18 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import urllib.request
 import uuid
 from urllib.parse import quote
 
+import certifi
 from flask import current_app, redirect, send_from_directory
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
+
+# certifi's CA bundle: python.org macOS builds ship without system certificates.
+_SSL = ssl.create_default_context(cafile=certifi.where())
 
 
 def _storage_request(path: str, data: bytes, content_type: str) -> dict:
@@ -25,7 +30,7 @@ def _storage_request(path: str, data: bytes, content_type: str) -> dict:
     req = urllib.request.Request(
         f"{cfg['SUPABASE_URL'].rstrip('/')}/storage/v1/{path}", data=data, method="POST",
         headers={"Authorization": f"Bearer {key}", "apikey": key, "Content-Type": content_type})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=30, context=_SSL) as resp:
         return json.loads(resp.read() or b"{}")
 
 
