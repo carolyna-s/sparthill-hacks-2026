@@ -15,6 +15,7 @@
         {% if current_user.is_staff %}
           <a href="{{ url_for('staff.overview') }}" class="text-slate-600 hover:text-slate-900">Overview</a>
           <a href="{{ url_for('staff.applications') }}" class="text-slate-600 hover:text-slate-900">Applicants</a>
+          <a href="{{ url_for('staff.people') }}" class="text-slate-600 hover:text-slate-900">People</a>
           <a href="{{ url_for('staff.matching_page') }}" class="text-slate-600 hover:text-slate-900">Matching</a>
           <a href="{{ url_for('staff.reports') }}" class="text-slate-600 hover:text-slate-900">Reports</a>
         {% else %}
