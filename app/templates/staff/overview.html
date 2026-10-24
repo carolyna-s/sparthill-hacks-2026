@@ -1,9 +1,51 @@
 {% extends "base.html" %}
 {% from "_macros.html" import card %}
-{% from "staff/_summary.html" import summary %}
+{% from "staff/_summary.html" import avg %}
+{% macro person_list(people) %}
+<ul class="text-sm columns-1 sm:columns-2 gap-6">
+  {% for u in people %}
+  <li class="py-1 break-inside-avoid"><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=u.id) }}">{{ u.name }}</a></li>
+  {% else %}<li class="py-1 text-slate-500">None yet.</li>{% endfor %}
+</ul>
+{% endmacro %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-5">Staff Overview</h1>
-{{ summary(report) }}
+<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
+  <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4">
+    <h2 class="font-semibold">Participants</h2>
+    <span class="text-2xl font-semibold">{{ report.participants }}</span>
+    <span class="text-sm text-slate-500">{{ report.mentors }} mentors · {{ report.mentees }} mentees</span>
+  </div>
+  <div class="grid md:grid-cols-2 gap-6">
+    <div>
+      <h3 class="text-sm font-medium text-slate-500 mb-2">Mentors ({{ report.mentors }})</h3>
+      {{ person_list(mentors) }}
+    </div>
+    <div>
+      <h3 class="text-sm font-medium text-slate-500 mb-2">Mentees ({{ report.mentees }})</h3>
+      {{ person_list(mentees) }}
+    </div>
+  </div>
+</section>
+<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
+  <div class="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4">
+    <h2 class="font-semibold">Active matches</h2>
+    <span class="text-2xl font-semibold">{{ report.active_matches }}</span>
+    <span class="text-sm text-slate-500">Avg match rating {{ avg(report.avg_match_rating) }}</span>
+  </div>
+  {% if pairs %}
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-500"><tr><th class="py-1 font-medium">Mentee</th><th class="font-medium">Mentor</th><th></th></tr></thead>
+    {% for m in pairs %}
+    <tr class="border-t">
+      <td class="py-2"><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=m.mentee_id) }}">{{ m.mentee.name }}</a></td>
+      <td><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=m.mentor_id) }}">{{ m.mentor.name }}</a></td>
+      <td class="text-right"><a class="text-slate-500 hover:text-brand-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">Details →</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="text-sm text-slate-500">No approved matches yet.</p>{% endif %}
+</section>
 <div class="grid md:grid-cols-2 gap-5">
   {% call card("Applicants") %}
     <p class="text-sm mb-3">{{ applicant_count }} submitted application(s).</p>
