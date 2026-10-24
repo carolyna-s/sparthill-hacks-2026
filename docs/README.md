@@ -5,8 +5,8 @@ a weighted matching engine ranks mentors for each mentee, matched pairs work thr
 (pre-work, a live session with check-in, post-work), message each other and schedule meetings,
 and staff review applicants, approve matches, and track participation. Admins manage accounts.
 
-One Flask service serves the whole app. Data lives in **Supabase Postgres** (SQLite works for
-offline local dev). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
+One Flask service serves the whole app. Data lives in **Supabase Postgres** and uploads in
+**Supabase Storage**; there is no local-database mode (tests use a throwaway SQLite file). The target host is **AWS**. Roadmap and design: [docs/PLAN.md](PLAN.md).
 
 ## How people use the app
 
@@ -118,12 +118,9 @@ pip install -r requirements-dev.txt
 cp .env.example .env
 ```
 
-### 2. Pick a database
+### 2. Connect to Supabase
 
-**Option A: SQLite (no setup, offline).** Leave `DATABASE_URL` blank in `.env`. The app
-creates `instance/mentorship.db`, which is good for quick UI work and tests.
-
-**Option B: Supabase (shared team database).**
+The app only runs against the shared Supabase project and refuses to start without it.
 
 1. In the Supabase dashboard, open **sparthill-hackathon → Connect**.
 2. Copy the **Session pooler** connection string (port `5432`) and fill in the password.
@@ -133,8 +130,10 @@ creates `instance/mentorship.db`, which is good for quick UI work and tests.
    ```
    DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres
    ```
+4. For uploads, set `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API Keys → secret /
+   service_role). `SUPABASE_URL` is already filled in. Without it, uploading a file errors.
 
-Everyone using Option B shares the same data, so coordinate before running `flask seed` or
+Everyone shares the same data, so coordinate before running `flask seed` or
 any migration there.
 
 ### 3. Create tables and demo data
@@ -206,9 +205,9 @@ app/
   staff.py        applicant review, people, match approval, modules, reports
   admin.py        account metrics, user audit, (de)activation, creating staff accounts
   routes.py       landing, dashboard, application edits, /healthz, cron endpoint
-  storage.py      file uploads (local disk or S3)
+  storage.py      file uploads (Supabase Storage; local disk in tests)
   types.py        vector column type (pgvector on Postgres, JSON on SQLite)
-  notify.py       email (console or SES)
+  notify.py       email (console or SES), each logged to email_log
   seed.py         demo data
   templates/      Jinja + Tailwind via CDN (no frontend build)
 migrations/       Alembic migrations
@@ -222,9 +221,11 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 
 | Variable | Blank / default | Set it to |
 | --- | --- | --- |
-| `DATABASE_URL` | local SQLite | Supabase session-pooler URI |
+| `DATABASE_URL` | required: app won't start | Supabase session-pooler URI |
 | `FLASK_SECRET_KEY` | dev-only key | a long random string in any shared or deployed environment |
-| `S3_BUCKET` | uploads saved to `./data/uploads` | a bucket name (see PLAN.md for Supabase Storage) |
+| `SUPABASE_URL` | prefilled in `.env.example` | project API URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | uploads fail | the project's secret / service_role key (server-only) |
+| `SUPABASE_STORAGE_BUCKET` | `uploads` | another private bucket |
 | `EMAIL_BACKEND` | `console` | `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |

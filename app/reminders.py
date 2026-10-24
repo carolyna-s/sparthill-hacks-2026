@@ -1,7 +1,7 @@
 """Automated reminders.
 
 `send_due_reminders()` is idempotent: each reminder has a key, and ReminderLog stops the
-same key going to the same person twice. Run it as often as you like — locally with
+same key going to the same person twice (every attempt, sent or failed, is also in EmailLog). Run it as often as you like — locally with
 `flask send-reminders`, on AWS via EventBridge Scheduler → POST /internal/cron/reminders.
 """
 
@@ -52,7 +52,8 @@ def send_due_reminders() -> int:
     for user, key, subject, body in due_reminders():
         if (user.id, key) in sent_keys:
             continue
-        send_email(user.email, subject, f"Hi {user.name},\n\n{body}\n")
+        if not send_email(user.email, subject, f"Hi {user.name},\n\n{body}\n", user=user, key=key):
+            continue  # not marked as sent, so the next run retries it
         db.session.add(ReminderLog(user_id=user.id, key=key))
         sent_keys.add((user.id, key))
         sent += 1

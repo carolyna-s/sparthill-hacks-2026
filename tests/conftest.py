@@ -3,9 +3,10 @@ import tempfile
 
 import pytest
 
-# Tests use a throwaway SQLite file and upload dir, never .env's database.
+# Tests use a throwaway SQLite file and upload dir, never .env's Supabase database or bucket.
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(tempfile.mkdtemp(prefix="mp-test-"), "test.db")
-os.environ["S3_BUCKET"] = ""
+os.environ["SUPABASE_URL"] = ""
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = ""
 os.environ["EMAIL_BACKEND"] = "console"
 os.environ["ANTHROPIC_API_KEY"] = ""  # LinkedIn import uses the offline keyword pass
 os.environ["OPENAI_API_KEY"] = ""  # no embedding calls; tests stub app.embeddings.embed

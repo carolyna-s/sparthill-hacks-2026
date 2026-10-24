@@ -6,12 +6,10 @@ load_dotenv()
 
 
 def _database_url() -> str:
+    """Supabase Postgres (create_app refuses anything else outside tests)."""
     url = os.getenv("DATABASE_URL", "")
-    if not url:
-        os.makedirs("instance", exist_ok=True)
-        return "sqlite:///" + os.path.join(os.getcwd(), "instance", "mentorship.db")
-    # Supabase/RDS hand out postgres:// or postgresql:// URLs; SQLAlchemy would pick psycopg2
-    # for those, but we install psycopg 3.
+    # Supabase hands out postgres:// or postgresql:// URLs; SQLAlchemy would pick psycopg2 for
+    # those, but we install psycopg 3.
     for prefix in ("postgres://", "postgresql://"):
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url.removeprefix(prefix)
@@ -24,11 +22,15 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10 MB uploads
 
-    S3_BUCKET = os.getenv("S3_BUCKET", "")
-    AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
-    UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "data", "uploads"))
+    # Uploads go to a private Supabase Storage bucket (app/storage.py). The service-role key is
+    # server-only; never send it to the browser.
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "uploads")
+    UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "data", "uploads"))  # tests only
 
-    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "console")
+    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "console")  # every email is also in EmailLog
+    AWS_REGION = os.getenv("AWS_REGION", "us-west-2")  # for SES
     MAIL_FROM = os.getenv("MAIL_FROM", "mentorship@example.org")
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 
