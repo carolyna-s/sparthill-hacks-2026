@@ -213,10 +213,9 @@ One row per proposed pair:
 
 Denying opens a short form, and the deny doesn't go through without it:
 
-- **Reason** (dropdown): gut feeling · different interests or pathway · experience gap wrong ·
-  language or communication · personality or fit concern · mentor overloaded · conflict of
-  interest · other
-- **Comment** (required, free text): e.g. "Mentee wants industry research, mentor is pure startup."
+- **Reason** (dropdown): different interests or pathway · experience gap wrong · language or
+  communication · personality or fit concern · mentor overloaded · conflict of interest · other
+- **Comment** (free text, shown and required only for "other"): e.g. "Mentee wants industry research, mentor is pure startup."
 
 Then, automatically:
 1. The pair goes on an exclusion list and is never proposed again.

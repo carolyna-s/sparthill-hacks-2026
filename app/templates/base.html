@@ -77,6 +77,20 @@
         <div class="mb-4 rounded-lg px-4 py-2 text-sm {{ 'bg-red-50 text-red-800' if cat == 'error' else 'bg-emerald-50 text-emerald-800' }}">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
+    {# Staff actions offer a one-click undo on the page right after them (staff.py _offer_undo). #}
+    {% set undo = session.pop('undo', None) if current_user.is_authenticated and current_user.is_staff %}
+    {% if undo %}
+      <form method="post" action="{{ undo.action }}" class="mb-4 rounded px-4 py-2 text-sm bg-slate-800 text-white flex items-center gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for name, value in undo.fields.items() %}
+          {% for v in (value if value is sequence and value is not string else [value]) %}
+            <input type="hidden" name="{{ name }}" value="{{ v }}">
+          {% endfor %}
+        {% endfor %}
+        <span>{{ undo.text }}</span>
+        <button class="ml-auto rounded border border-white/40 px-3 py-1 font-medium hover:bg-white/10">↶ Undo</button>
+      </form>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
   <footer class="bg-brand-900 text-brand-100">

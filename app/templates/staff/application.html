@@ -2,7 +2,8 @@
 {% from "_macros.html" import csrf, card, btn, tags, status_badge, input_cls %}
 {% block content %}
 {% set p = a.user.profile %}
-<h1 class="text-2xl font-semibold mb-1">{{ a.user.name }} {{ status_badge(a.status) }}</h1>
+<a href="{{ url_for('staff.applications', status=a.status) }}" class="text-sm text-slate-500">← Back to applicants</a>
+<h1 class="text-2xl font-semibold mt-1 mb-1">{{ a.user.name }} {{ status_badge(a.status) }}</h1>
 <p class="text-sm text-slate-500 mb-5">{{ a.user.role }} · {{ a.user.email }} · {{ p.headline }} {{ ('· ' ~ p.organization) if p.organization }}</p>
 <div class="grid md:grid-cols-3 gap-5">
   <div class="md:col-span-2">
@@ -25,7 +26,6 @@
       {% endfor %}
       <p class="text-xs text-slate-500">School</p>
       <p class="text-sm">{{ p.school or '—' }}{% if a.user.role == 'mentee' and p.prefers_alumni %} · prefers an alumni mentor{% endif %}</p>
-      {% if a.user.role == 'mentor' %}<p class="text-sm mt-2">Capacity: {{ p.capacity }}</p>{% endif %}
     {% endcall %}
   </div>
   <div>
@@ -35,7 +35,6 @@
       <textarea name="staff_notes" rows="4" placeholder="Internal notes" class="{{ input_cls() }}">{{ a.staff_notes }}</textarea>
       <div class="flex flex-wrap gap-2">
         {{ btn("Accept", "primary", "decision", "accepted") }}
-        {{ btn("Waitlist", "secondary", "decision", "waitlisted") }}
         {{ btn("Reject", "danger", "decision", "rejected") }}
       </div>
     </form>

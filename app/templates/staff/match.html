@@ -1,45 +1,94 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, status_badge, input_cls %}
-{% from "staff/_match.html" import why, profile_facts, denial with context %}
+{% from "staff/_match.html" import why, profile_facts, denial, post with context %}
+{# One page, three uses: the full overview ("More info"), and the confirmation step for
+   ?action=approve or ?action=reject. #}
 {% block content %}
-<a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500">← Matching</a>
-<h1 class="text-2xl font-semibold mt-1 mb-1">{{ m.mentee.name }} → {{ m.mentor.name }} {{ status_badge(m.status) }}</h1>
-<p class="text-sm text-slate-500 mb-5">Score {{ m.score }} · proposed {{ m.proposed_at.strftime('%b %d') }}
-  · mentor has {{ slots.get(m.mentor_id, 0) }} open slot(s)</p>
+<a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500">← Back to matching</a>
+<h1 class="text-2xl font-semibold mt-1 mb-1">
+  {% if action == 'approve' %}Approve {% elif action == 'reject' %}Reject {% endif %}{{ m.mentee.name }} → {{ m.mentor.name }}
+  {{ status_badge(m.status) }}</h1>
+<p class="text-sm text-slate-500 mb-5">Score {{ m.score }} · proposed {{ m.proposed_at.strftime('%b %d') }}</p>
 
 <div class="grid md:grid-cols-3 gap-5">
   {% for role, u in [("Mentee", m.mentee), ("Mentor", m.mentor)] %}
     {% call card(role ~ ": " ~ u.name) %}
-      {{ profile_facts(u) }}
+      {{ profile_facts(u, questions) }}
       <a class="text-sm text-indigo-600" href="{{ url_for('staff.person', user_id=u.id) }}">View {{ u.name.split()[0] }}'s dashboard →</a>
     {% endcall %}
   {% endfor %}
   <div>
-    {% call card("Why they were matched") %}{{ why(m.score_breakdown) }}{% endcall %}
-
-    {% if m.status == 'proposed' %}
-      {% call card("Decision") %}
-      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='approve') }}" class="mb-4">
-        {{ csrf() }}{{ btn("Approve this match") }}
-      </form>
-      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="space-y-3 border-t pt-4">
+    {% if action == 'approve' %}
+      {% call card("Approve this match?") %}
+        <p class="text-sm text-slate-600 mb-4">They become an active match and can start messaging each other.
+          You can undo this until they've exchanged messages.</p>
+        <div class="flex gap-2 items-center">
+          {{ post(url_for('staff.decide_match', match_id=m.id, decision='approve'), "Confirm approval", "primary",
+                  next=url_for('staff.matching_page')) }}
+          <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="text-sm text-slate-500">Not yet</a>
+        </div>
+      {% endcall %}
+    {% elif action == 'reject' %}
+      {% call card("Why are you rejecting it?") %}
+      <form method="post" action="{{ url_for('staff.decide_match', match_id=m.id, decision='reject') }}" class="space-y-3">
         {{ csrf() }}
         <fieldset>
-          <legend class="text-sm font-medium mb-2">Why are you rejecting it?</legend>
           {% for key, label in deny_reasons.items() %}
             <label class="flex items-start gap-2 text-sm py-0.5">
               <input type="radio" name="reason" value="{{ key }}" required class="mt-1"> {{ label }}</label>
-            {% if loop.first %}<p class="text-xs text-slate-500 mt-2 mb-1">Or something specific:</p>{% endif %}
           {% endfor %}
         </fieldset>
-        <label class="block">
-          <span class="text-sm font-medium block mb-1">Explain your reasoning</span>
-          <textarea name="comment" rows="4" required class="{{ input_cls() }}"
-            placeholder="What made it feel off, or what looked wrong? e.g. &quot;Mentee wants research, mentor is pure startup.&quot; A hunch is fine, just describe it."></textarea>
-          <span class="text-xs text-slate-500">Saved with the match so the matching can learn from it. This pair won't be proposed again.</span>
+        <label id="other-reason" class="block" hidden>
+          <span class="text-sm font-medium block mb-1">Describe the reason</span>
+          <textarea name="comment" rows="4" class="{{ input_cls() }}"
+            placeholder="e.g. &quot;Mentee wants research, mentor is pure startup.&quot;"></textarea>
         </label>
-        {{ btn("Reject match", "danger") }}
+        <p class="text-xs text-slate-500">Saved with the match so the matching can learn from it. This pair won't be proposed again.</p>
+        <div class="flex gap-2 items-center">
+          {{ btn("Reject match", "danger") }}
+          <a href="{{ url_for('staff.match_review', match_id=m.id) }}" class="text-sm text-slate-500">Not yet</a>
+        </div>
       </form>
+      <script>
+        // The free-text box is only for "Other".
+        document.querySelectorAll('input[name="reason"]').forEach(function (radio) {
+          radio.addEventListener('change', function () {
+            var other = document.querySelector('input[name="reason"][value="other"]').checked;
+            var box = document.getElementById('other-reason');
+            box.hidden = !other;
+            box.querySelector('textarea').required = other;
+          });
+        });
+      </script>
+      {% endcall %}
+    {% elif m.status == 'proposed' %}
+      {% call card("Decision") %}
+        <div class="flex flex-wrap gap-2">
+          <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve') }}" class="text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
+          <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject') }}" class="text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
+          {{ post(url_for('staff.cancel_proposals'), "Cancel proposal", fields={'ids': m.id},
+                  next=url_for('staff.matching_page')) }}
+        </div>
+      {% endcall %}
+    {% else %}
+      {% call card("Decision") %}
+        <p class="text-sm mb-3">{{ m.status|capitalize }}{% if m.decided_at %} on {{ m.decided_at.strftime('%b %d, %H:%M') }}{% endif %}.</p>
+        {% set undo = {'approved': ('unapprove', 'Undo approval'), 'rejected': ('unreject', 'Undo rejection'),
+                       'ended': ('reopen', 'Reopen match')}.get(m.status) %}
+        {% if undo %}{{ post(url_for('staff.decide_match', match_id=m.id, decision=undo[0]), "↶ " ~ undo[1]) }}
+          <p class="text-xs text-slate-500 mt-2">{{ 'Puts it back in the proposals.' if m.status != 'ended' else 'Makes it an active match again.' }}</p>{% endif %}
+        {% if m.status == 'approved' %}<div class="mt-3">{{ post(url_for('staff.decide_match', match_id=m.id, decision='end'), "End match") }}</div>{% endif %}
+      {% endcall %}
+    {% endif %}
+
+    {% call card("Why they were matched") %}{{ why(m.score_breakdown) }}{% endcall %}
+
+    {% if mentees_of_mentor %}
+      {% call card(m.mentor.name.split()[0] ~ " is also matched with") %}
+        {% for o in mentees_of_mentor %}
+          <div class="text-sm py-0.5">{{ o.mentee.name }} {{ status_badge(o.status) }}</div>
+        {% endfor %}
+        <p class="text-xs text-amber-700 mt-2">Mentorship is one-to-one, so only one of these should stay.</p>
       {% endcall %}
     {% endif %}
 

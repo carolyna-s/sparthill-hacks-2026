@@ -80,11 +80,6 @@ def update_application():
     profile.education_paths = [value for value in request.form.getlist("education_paths")
                                if value in TAXONOMY["education_paths"]]
     profile.prefers_alumni = current_user.role == "mentee" and bool(request.form.get("prefers_alumni"))
-    if current_user.role == "mentor":
-        try:
-            profile.capacity = max(1, min(5, int(request.form.get("capacity", "1"))))
-        except ValueError:
-            profile.capacity = 1
     profile.interests = request.form.get("interests", "").strip()
     profile.looking_for = request.form.get("looking_for", "").strip()
 

@@ -74,13 +74,7 @@
         {% endfor %}
       </div>
     </fieldset>
-    {% if current_user.role == "mentor" %}
-    {% call field("Mentee capacity") %}
-      <select name="capacity" data-editable {% if not editing %}disabled{% endif %} class="{{ control_cls }}">
-        {% for value in range(1, 6) %}<option value="{{ value }}" {{ 'selected' if p.capacity == value }}>{{ value }}</option>{% endfor %}
-      </select>
-    {% endcall %}
-    {% endif %}
+    {% if current_user.role == "mentor" %}<p class="text-sm text-slate-500 mb-4">Mentorship is one-to-one: you'll be matched with one mentee.</p>{% endif %}
 
     <h3 class="font-medium text-slate-800 mt-5 mb-3">Preferences</h3>
     {% call field("Industry") %}

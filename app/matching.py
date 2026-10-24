@@ -19,8 +19,10 @@ Every remaining pair gets a weighted soft-filter score, each dimension 0-1:
 
 A dimension the mentee left empty (or alumni when not requested) counts as fully covered, so
 it doesn't drag every score down. Text is different: a pair with no answers to compare (blank,
-or not embedded yet) leaves it out of the score entirely, weight included. Mentors at capacity are excluded,
-and so are pairs staff rejected (match_exclusion): a rejected pair is never proposed again.
+or not embedded yet) leaves it out of the score entirely, weight included.
+
+Matching is one-to-one: a mentor with an approved or proposed match isn't offered to anyone else.
+Pairs staff rejected (match_exclusion) are excluded too: a rejected pair is never proposed again.
 
 The scoring functions take plain dicts so they're trivial to test and tune; the DB helpers
 at the bottom adapt Profile rows.
@@ -35,6 +37,8 @@ from sqlalchemy import func
 from . import embeddings
 from .extensions import db
 from .models import Application, Match, MatchExclusion, Profile, User
+
+MENTEES_PER_MENTOR = 1  # one-to-one mentorship
 
 HARD_FILTERS = ("availability", "languages")
 HARD_FILTER_DEFAULTS = {"languages": ["English"]}  # what a blank answer means
@@ -188,13 +192,11 @@ def accepted_profiles(role: str) -> dict[int, dict]:
 
 
 def open_slots() -> dict[int, int]:
-    """Remaining capacity per accepted mentor, counting approved and proposed matches."""
+    """Remaining slots per accepted mentor (MENTEES_PER_MENTOR minus approved and proposed matches)."""
     taken = dict(db.session.query(Match.mentor_id, func.count(Match.id))
                  .filter(Match.status.in_(("approved", "proposed")))
                  .group_by(Match.mentor_id).all())
-    caps = dict(db.session.query(Profile.user_id, Profile.capacity)
-                .filter(Profile.user_id.in_(accepted_profiles("mentor").keys())).all())
-    return {mid: cap - taken.get(mid, 0) for mid, cap in caps.items()}
+    return {mid: MENTEES_PER_MENTOR - taken.get(mid, 0) for mid in accepted_profiles("mentor")}
 
 
 def unmatched_mentee_ids() -> set[int]:
