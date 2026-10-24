@@ -8,7 +8,7 @@ from app.extensions import db
 from .conftest import login
 
 PARTICIPANT_PAGES = ["/dashboard", "/profile/1", "/profile/2", "/profile/3", "/profile/4", "/apply", "/agreements",
-                     "/modules", "/modules/1", "/messages/"]
+                     "/account", "/dashboard/application", "/modules", "/modules/1", "/messages/"]
 
 
 @pytest.fixture
