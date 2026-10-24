@@ -131,7 +131,7 @@ Per-feature similarity, each 0–1:
 | Clubs | 1.0 shared club · 0.5 same club category · 0 |
 | Student groups | share of the mentee's opted-in groups the mentor shares |
 
-`S = Σ w_f·sim_f / Σ w_f`. A feature the mentee left blank counts as 1.0. Default weights:
+`S = Σ w_f·sim_f / Σ w_f`. A feature the mentee left blank scores 0 ("Open to Any" / "Undecided": 0.35). Default weights:
 pathway 0.15, interests 0.15, major 0.10, experience 0.10, languages 0.10, clubs 0.10, student
 groups 0.10, goals 0.10, organization 0.05, concentration 0.05.
 
