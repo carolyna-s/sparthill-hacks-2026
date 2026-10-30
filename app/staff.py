@@ -143,7 +143,7 @@ def _offer_undo(text: str, action: str, **fields) -> None:
 def matching_page():
     unmatched = (db.session.query(User).filter(User.id.in_(matching.unmatched_mentee_ids()))
                  .order_by(User.name).all())
-    rankings = {u.id: matching.ranking_for(u.id) for u in unmatched}
+    rankings = {u.id: matching.ranking_for(u.id, limit=3) for u in unmatched}
     accepted_mentors = matching.accepted_profiles("mentor")
     mentors = {}
     if accepted_mentors:

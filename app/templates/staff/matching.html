@@ -33,13 +33,20 @@
 {% endcall %}
 
 {% call card("Unmatched accepted mentees (" ~ unmatched|length ~ ")") %}
-<p class="text-xs text-slate-500 mb-2">Best mentors for each mentee. Add a pair to move it up to the proposals above, where
-  you approve or reject it.</p>
+<p class="text-xs text-slate-500 mb-2">Click a mentee to see their best mentors. Add a pair to move it up to the proposals
+  above, where you approve or reject it.</p>
 {% for u in unmatched %}
-  <div class="border-t py-3">
-    <div class="flex items-start justify-between gap-4">
+  <details class="group border-t py-3" {% if override_mentee_id == u.id %}open{% endif %}>
+    <summary class="list-none cursor-pointer flex items-start justify-between gap-4 [&::-webkit-details-marker]:hidden">
       <div class="min-w-0">
-        <p class="font-medium text-sm mb-1">{{ u.name }}</p>
+        <p class="font-medium text-sm mb-1 flex items-center gap-2">
+          <svg class="h-6 w-6 shrink-0 text-slate-500 transition-transform group-open:rotate-90" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 5l7 7-7 7"/></svg>
+          {{ u.name }}
+          <span class="text-xs rounded px-1.5 py-0.5 bg-slate-100 text-slate-600 font-normal">Mentee</span>
+          <span class="text-xs text-slate-500 font-normal">· {{ rankings[u.id]|length }} suggested mentor{{ '' if rankings[u.id]|length == 1 else 's' }}</span>
+        </p>
         <div class="mb-2">{{ tags(([u.profile.industry] if u.profile.industry else []) + u.profile.goals + u.profile.development_areas) }}</div>
       </div>
       {% if override_mentee_id != u.id %}
@@ -51,7 +58,7 @@
           </button>
         </form>
       {% endif %}
-    </div>
+    </summary>
     {% if override_mentee_id == u.id %}
       <form method="post" action="{{ url_for('staff.manual_override') }}"
             class="mb-3 flex flex-wrap items-end gap-2"
@@ -76,6 +83,7 @@
         <a href="{{ url_for('staff.matching_page') }}" class="text-sm text-slate-500 py-2">Cancel</a>
       </form>
     {% endif %}
+    <p class="text-xs font-medium uppercase tracking-wide text-slate-500 mt-1 mb-1">Top mentors</p>
     <table class="w-full text-sm">
       {% for c in rankings[u.id] %}
       <tr class="align-top">
@@ -90,7 +98,7 @@
       </tr>
       {% else %}<tr><td class="text-slate-500">No free mentor shares a time slot. Run matching to pair them with whoever is left.</td></tr>{% endfor %}
     </table>
-  </div>
+  </details>
 {% else %}<p class="text-sm text-slate-500">Everyone accepted is matched.</p>{% endfor %}
 {% endcall %}
 
