@@ -580,6 +580,53 @@ def test_flagged_proposals_head_the_queue_as_needing_staff_approval(client):
     assert response.location.endswith(f"/staff/matches/{scored[0].id}?queue=1")
 
 
+def _weight_fields(**changes):
+    """The weights bar's form fields: the default percents, some changed."""
+    return {f"weight_{d}": p for d, p in (matching.default_percents() | changes).items()}
+
+
+def test_run_matching_with_custom_weights_records_them(client):
+    login(client, "staff.admin@example.org")
+    page = client.get("/staff/matching")
+    assert b"Default weights" in page.data
+    assert f'name="weight_industry" value="{matching.default_percents()["industry"]}"'.encode() in page.data
+
+    response = client.post("/staff/matching/propose-all", data=_weight_fields(industry=40, text=8, languages=20),
+                           follow_redirects=True)
+    assert b"Proposed 4 matches using custom weights." in response.data
+    proposed = db.session.query(Match).filter_by(status="proposed").all()
+    assert len(proposed) == 4
+    for m in proposed:
+        assert (m.score_breakdown["weights"]["industry"], m.score_breakdown["weights"]["languages"]) == (0.4, 0.2)
+    log = db.session.query(AuditLog).filter_by(action="matching_run").one()
+    assert log.description.startswith("Ran matching with custom weights (industry 40%,")
+    assert "languages bonus 20%" in log.description and log.description.endswith("proposed 4 match(es).")
+    assert b"Scored with custom weights" in client.get(f"/staff/matches/{proposed[0].id}").data
+
+
+def test_run_matching_with_invalid_weights_runs_nothing(client):
+    login(client, "staff.admin@example.org")
+    for fields, error in [(_weight_fields(industry=50), b"must add up to 100%, not 122%"),
+                          (_weight_fields(goals="lots"), b"must be a number"),
+                          (_weight_fields(languages=45), b"between 0 and 30%")]:
+        response = client.post("/staff/matching/propose-all", data=fields, follow_redirects=True)
+        assert b"Matching didn&#39;t run" in response.data and error in response.data
+    assert db.session.query(Match).count() == 0
+    assert db.session.query(AuditLog).filter_by(action="matching_run").count() == 0
+
+
+def test_run_matching_without_weight_fields_uses_the_defaults(client):
+    login(client, "staff.admin@example.org")
+    response = client.post("/staff/matching/propose-all", follow_redirects=True)  # a page from before the bar
+    assert b"Proposed 4 matches." in response.data
+    proposed = db.session.query(Match).filter_by(status="proposed").all()
+    assert len(proposed) == 4
+    assert all(m.score_breakdown["weights"] == matching.WEIGHTS for m in proposed)
+    log = db.session.query(AuditLog).filter_by(action="matching_run").one()
+    assert log.description.startswith("Ran matching with default weights")
+    assert b"Scored with custom weights" not in client.get(f"/staff/matches/{proposed[0].id}").data
+
+
 def test_staff_manual_match_override_requires_capacity_and_logs_change(client):
     login(client, "staff.admin@example.org")
     mentee_id = min(matching.unmatched_mentee_ids())

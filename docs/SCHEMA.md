@@ -77,7 +77,7 @@ embedded), `embedding_model`, `updated_at`.
 | `status` | `proposed` → `released` \| `rejected` (staff decision); `released` → `approved` (mentee confirms; capacity overrides also need mentor confirmation) \| `rejected` (a participant declines) \| `withdrawn` (mentee leaves program); `approved` → `withdrawn` \| `ended`. Only confirmed matches are active; rejected/withdrawn pairs aren't re-proposed |
 | `score` | final 0–100 shown to staff. NULL when the pair fails a hard filter ("needs staff approval"; first in the review queue), with the would-be score in `score_breakdown.fit_if_compatible` |
 | `structured_score`, `semantic_score`, `context_multiplier` | stage 2, stage 3, stage 4 (docs/PLAN.md §4) |
-| `score_breakdown` | per-feature similarities and shared values |
+| `score_breakdown` | per-feature similarities and shared values; `weights`: the weights a *Run matching* proposal was scored with (docs/PLAN.md §4.7) |
 | `ai_review` | `{note, flags, confidence, feedback_ids_used}` |
 | `config_id` | the `matching_config` used |
 | `rematch_round` | 1 for the first proposal, +1 for each auto re-match after a deny |

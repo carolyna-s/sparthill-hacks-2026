@@ -179,7 +179,8 @@ def matching_page():
                                mentor_loads.get(mentor_id, 0) < matching.MENTEES_PER_MENTOR
                                for mentor_id in mentors
                            ),
-                           override_mentee_id=override_mentee_id)
+                           override_mentee_id=override_mentee_id,
+                           weight_defaults=matching.default_percents(), max_bonus=matching.MAX_BONUS_PERCENT)
 
 
 @bp.get("/matches/<int:match_id>")
@@ -195,7 +196,7 @@ def match_review(match_id: int):
                            action=action if action in ("approve", "reject") else None,
                            queue=request.args.get("queue") == "1",
                            questions=Personality_Questions_Data, mentees_of_mentor=mentees_of_mentor,
-                           denials=denials_for([m.id]).get(m.id, []))
+                           denials=denials_for([m.id]).get(m.id, []), default_weights=matching.WEIGHTS)
 
 
 def _next_queued_proposal(match: Match) -> Match | None:
@@ -224,13 +225,29 @@ def _release_match(match: Match) -> None:
     match.confirm_by = now + timedelta(days=cohort.confirm_days if cohort else 7)
 
 
+def _describe_weights(weights: dict) -> str:
+    return ", ".join(f"{d}{' bonus' if d in matching.BONUS else ''} {100 * w:g}%" for d, w in weights.items())
+
+
 @bp.post("/matching/propose-all")
 def propose_all():
-    created = matching.propose_all()
+    # Percents from the weights bar. A field the form didn't send (a page cached before the bar
+    # existed) keeps its default.
+    submitted = {d: request.form[f"weight_{d}"] for d in matching.WEIGHTS if f"weight_{d}" in request.form}
+    try:
+        weights = matching.weights_from_percents(submitted)
+    except ValueError as e:
+        flash(f"Matching didn't run: {e}", "error")
+        return redirect(url_for("staff.matching_page"))
+    custom = weights != matching.WEIGHTS
+    created = matching.propose_all(weights)
+    record_change("matching_run", f"Ran matching with {'custom' if custom else 'default'} weights "
+                                  f"({_describe_weights(weights)}): proposed {len(created)} match(es).")
+    db.session.commit()
     left = len(matching.unmatched_mentee_ids())
     if created:
-        _offer_undo(f"Proposed {len(created)} matches." + (f" {left} mentees couldn't be matched (no compatible "
-                                                           "mentor with an open slot)." if left else ""),
+        _offer_undo(f"Proposed {len(created)} matches{' using custom weights' if custom else ''}."
+                    + (f" {left} mentees couldn't be matched (no compatible mentor with an open slot)." if left else ""),
                     url_for("staff.cancel_proposals"), ids=[m.id for m in created])
     else:
         flash("Nothing to propose: every accepted mentee already has a match or no mentor is free.", "ok")

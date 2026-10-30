@@ -30,6 +30,10 @@ answer ("no preference"), not a blank. Text and languages are different: a pair 
 compare (no text embedded, no shared second language) leaves them out entirely, weight
 included, so they can only raise a score.
 
+Staff can reweigh a run from the matching page (the weights bar): `weights_from_percents`
+checks what they submit, and each match `propose_all` creates keeps the weights it was scored
+with in breakdown["weights"]. Every other caller uses WEIGHTS.
+
 Matching is one-to-one: each mentor takes one mentee. `assign` turns the scores into
 proposals with the Hungarian algorithm (the assignment with the highest total score). Each run
 covers only the pool: mentees and mentors with no approved or pending match. Every mentee is
@@ -46,6 +50,8 @@ at the bottom adapt Profile rows.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from . import embeddings
@@ -72,6 +78,9 @@ WEIGHTS = {
     "alumni": 0.08,
     "languages": 0.10,  # bonus: counted only when the pair shares a non-English language
     }
+BONUS = ("languages",)  # on top of the others: not part of the 100% they share on the weights bar
+MAIN = tuple(d for d in WEIGHTS if d not in BONUS)
+MAX_BONUS_PERCENT = 30
 
 # Cosine similarities between OpenAI embeddings of short answers rarely go below ~0.2 even for
 # unrelated text, or above ~0.7 for close paraphrases; stretch that band to 0-1. Tune once
@@ -202,11 +211,55 @@ def score_pair(mentee: dict, mentor: dict, weights: dict = WEIGHTS) -> tuple[flo
         total += w * sim
         used += w
         breakdown[dim] = {"coverage": round(sim, 3), "shared": shared, "weight": w}
-    return round(100 * total / used, 1), breakdown
+    # used is 0 only when every dimension that applies is weighted 0 (staff put it all on text,
+    # and this pair has no text to compare): no evidence of fit.
+    return (round(100 * total / used, 1) if used else 0.0), breakdown
+
+
+def default_percents() -> dict[str, int]:
+    """WEIGHTS as whole percents for the weights bar. The main dimensions share 100 (largest
+    remainder, so rounding never breaks the total); the bonus is relative to the same total."""
+    total = sum(WEIGHTS[d] for d in MAIN)
+    exact = {d: 100 * WEIGHTS[d] / total for d in MAIN}
+    out = {d: math.floor(v) for d, v in exact.items()}
+    for d in sorted(MAIN, key=lambda d: out[d] - exact[d])[:100 - sum(out.values())]:
+        out[d] += 1
+    return out | {d: round(100 * WEIGHTS[d] / total) for d in BONUS}
+
+
+def weights_from_percents(raw: Mapping[str, object]) -> dict[str, float]:
+    """Weights from the percents staff submit on the weights bar ({dimension: percent}, form
+    strings are fine; a dimension left out keeps its default). The main dimensions must each be
+    0-100 and add up to exactly 100; the bonus must be 0-MAX_BONUS_PERCENT. Raises ValueError
+    otherwise. Submitting the defaults returns WEIGHTS itself, so rounding to whole percents
+    never shifts a default run."""
+    defaults = default_percents()
+    percents = {}
+    for d in WEIGHTS:
+        value = raw.get(d, defaults[d])
+        try:
+            percents[d] = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"The {d} weight must be a number, not {value!r}.") from None
+        if not math.isfinite(percents[d]):
+            raise ValueError(f"The {d} weight must be a number, not {value!r}.")
+    for d in MAIN:
+        if not 0 <= percents[d] <= 100:
+            raise ValueError(f"The {d} weight must be between 0 and 100%, not {percents[d]:g}%.")
+    total = sum(percents[d] for d in MAIN)
+    if not math.isclose(total, 100, abs_tol=1e-9):
+        raise ValueError(f"The main weights must add up to 100%, not {total:g}%.")
+    for d in BONUS:
+        if not 0 <= percents[d] <= MAX_BONUS_PERCENT:
+            raise ValueError(f"The {d} bonus must be between 0 and {MAX_BONUS_PERCENT}%, not {percents[d]:g}%.")
+    if percents == defaults:
+        return WEIGHTS
+    return {d: percents[d] / 100 for d in WEIGHTS}
 
 
 def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, int],
-                 limit: int | None = None, excluded: set[int] = frozenset()) -> list[Candidate]:
+                 limit: int | None = None, excluded: set[int] = frozenset(),
+                 weights: dict = WEIGHTS) -> list[Candidate]:
     """Compatible mentors (sharing a time slot), best first.
     mentors: {mentor_id: tags}, open_slots: {mentor_id: 1 if free, else 0},
     excluded: mentor ids staff rejected for this mentee."""
@@ -217,7 +270,7 @@ def rank_mentors(mentee: dict, mentors: dict[int, dict], open_slots: dict[int, i
         overlap = hard_filter_overlap(mentee, tags)
         if overlap is None:
             continue
-        score, breakdown = score_pair(mentee, tags)
+        score, breakdown = score_pair(mentee, tags, weights)
         breakdown["filters"] = overlap
         ranked.append(Candidate(mentor_id, score, breakdown))
     ranked.sort(key=lambda c: (-c.score, c.mentor_id))
@@ -229,7 +282,7 @@ MISMATCH = -1e6  # fails a hard filter: used only when no compatible mentor is l
 
 
 def assign(mentees: dict[int, dict], mentors: dict[int, dict],
-           excluded: set[tuple[int, int]] = frozenset()) -> dict[int, Candidate]:
+           excluded: set[tuple[int, int]] = frozenset(), weights: dict = WEIGHTS) -> dict[int, Candidate]:
     """One-to-one matching with the Hungarian algorithm: the assignment with the highest
     total score across everyone, not just the best pair first.
 
@@ -253,7 +306,7 @@ def assign(mentees: dict[int, dict], mentors: dict[int, dict],
             if (me, mt) in excluded:
                 continue
             overlap, failed = hard_filters(mentees[me], mentors[mt])
-            score, breakdown = score_pair(mentees[me], mentors[mt])
+            score, breakdown = score_pair(mentees[me], mentors[mt], weights)
             breakdown["filters"] = overlap
             if failed:
                 breakdown["filters_failed"] = failed
@@ -301,10 +354,10 @@ def excluded_pairs() -> set[tuple[int, int]]:
     return {(me, mt) for me, mt in rejected.union(finished)}
 
 
-def ranking_for(mentee_id: int, limit: int = 5) -> list[Candidate]:
+def ranking_for(mentee_id: int, limit: int = 5, weights: dict = WEIGHTS) -> list[Candidate]:
     profile = db.session.query(Profile).filter_by(user_id=mentee_id).one()
     excluded = {mt for me, mt in excluded_pairs() if me == mentee_id}
-    return rank_mentors(_tags(profile), accepted_profiles("mentor"), open_slots(), limit, excluded)
+    return rank_mentors(_tags(profile), accepted_profiles("mentor"), open_slots(), limit, excluded, weights)
 
 
 def rematch_round(mentee_id: int) -> int:
@@ -312,19 +365,21 @@ def rematch_round(mentee_id: int) -> int:
     return 1 + db.session.query(Match).filter_by(mentee_id=mentee_id, status="rejected").count()
 
 
-def propose_all() -> list[Match]:
+def propose_all(weights: dict = WEIGHTS) -> list[Match]:
     """Run matching on the pool and create `proposed` matches.
 
     The pool is every accepted mentee and mentor without an approved or pending match (never
     matched, or their proposal was rejected). Approved matches are out of it for good;
-    rejected pairs are never proposed again.
+    rejected pairs are never proposed again. Each match keeps the weights it was scored with in
+    breakdown["weights"].
     """
     mentees = {k: v for k, v in accepted_profiles("mentee").items() if k in unmatched_mentee_ids()}
     free = open_slots()
     mentors = {k: v for k, v in accepted_profiles("mentor").items() if free.get(k)}
     created = []
-    for mentee_id, c in assign(mentees, mentors, excluded_pairs()).items():
-        m = Match(mentee_id=mentee_id, mentor_id=c.mentor_id, score=c.score, score_breakdown=c.breakdown,
+    for mentee_id, c in assign(mentees, mentors, excluded_pairs(), weights).items():
+        m = Match(mentee_id=mentee_id, mentor_id=c.mentor_id, score=c.score,
+                  score_breakdown={**c.breakdown, "weights": dict(weights)},
                   rematch_round=rematch_round(mentee_id))
         db.session.add(m)
         created.append(m)

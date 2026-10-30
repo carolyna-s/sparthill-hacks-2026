@@ -1,5 +1,8 @@
+import pytest
+
 from app import matching
-from app.matching import GROUP_CREDIT, INDUSTRY_RANGE, NEUTRAL_CREDIT, SEMANTIC_RANGE, assign, rank_mentors, score_pair, text_similarity
+from app.matching import (GROUP_CREDIT, INDUSTRY_RANGE, NEUTRAL_CREDIT, SEMANTIC_RANGE, WEIGHTS, assign, rank_mentors,
+                          score_pair, text_similarity)
 from app.taxonomy import OPEN_TO_ANY, UNDECIDED
 
 MENTEE = {"industry": "Software Development", "goals": ["apply to grad school"],
@@ -228,3 +231,79 @@ def test_assign_never_uses_a_rejected_pair(monkeypatch):
     result = assign(mentees, mentors, excluded={(1, 10)})
     assert {me: c.mentor_id for me, c in result.items()} == {1: 20, 2: 10}
     assert assign(mentees, {10: {"name": "X"}}, excluded={(1, 10)}).keys() == {2}
+
+
+# --- custom weights (the staff weights bar) -----------------------------------------------
+
+def _percents(**changes):
+    """The default percents with some changed, as the weights bar would submit them."""
+    return matching.default_percents() | changes
+
+
+def test_default_percents_share_100_and_keep_the_bonus_apart():
+    percents = matching.default_percents()
+    assert sum(percents[d] for d in matching.MAIN) == 100
+    assert percents["languages"] == 10 and "languages" not in matching.MAIN
+
+
+def test_weights_from_percents_accepts_the_defaults_and_valid_changes():
+    assert matching.weights_from_percents(matching.default_percents()) is WEIGHTS
+    assert matching.weights_from_percents({}) is WEIGHTS  # nothing submitted: the defaults
+    form = {d: str(p) for d, p in _percents(industry=38, text=10, languages=0).items()}
+    weights = matching.weights_from_percents(form)
+    assert weights == {**WEIGHTS, "industry": 0.38, "text": 0.10, "languages": 0.0}
+    assert list(weights) == list(WEIGHTS)
+
+
+@pytest.mark.parametrize(("changes", "message"), [
+    ({"industry": -2, "development_areas": 50}, "between 0 and 100"),  # adds up to 100, but negative
+    ({"industry": 29}, "add up to 100"),
+    ({"industry": 27}, "add up to 100"),
+    ({"languages": 31}, "between 0 and 30"),
+    ({"languages": -1}, "between 0 and 30"),
+    ({"goals": "lots"}, "must be a number"),
+    ({"goals": None}, "must be a number"),
+    ({"goals": "nan"}, "must be a number"),
+])
+def test_weights_from_percents_rejects_bad_input(changes, message):
+    with pytest.raises(ValueError, match=message):
+        matching.weights_from_percents(_percents(**changes))
+
+
+def test_scaling_every_weight_keeps_the_score():
+    mentor = {"industry": "Banking", "development_areas": ["writing"], "goals": ["apply to grad school"]}
+    score, _ = score_pair(MENTEE, mentor)
+    assert 0 < score < 100
+    assert score_pair(MENTEE, mentor, {d: 2 * w for d, w in WEIGHTS.items()})[0] == score
+
+
+def test_reweighting_reorders_mentors_the_expected_way():
+    mentee = {"industry": "Banking", "development_areas": ["writing"]}
+    mentors = {1: {"industry": "Banking"}, 2: {"industry": "Law Practice", "development_areas": ["writing"]}}
+    slots = {1: 1, 2: 1}
+    assert [c.mentor_id for c in rank_mentors(mentee, mentors, slots)] == [1, 2]  # industry 28% beats skills 20%
+    skills_first = matching.weights_from_percents(_percents(industry=10, development_areas=38))
+    assert [c.mentor_id for c in rank_mentors(mentee, mentors, slots, weights=skills_first)] == [2, 1]
+
+
+def test_assign_with_custom_weights_changes_the_pairs():
+    mentees = {1: {"industry": "Banking", "development_areas": ["writing"]},
+               2: {"industry": "Law Practice", "development_areas": ["leadership"]}}
+    mentors = {10: {"industry": "Banking", "development_areas": ["leadership"]},
+               20: {"industry": "Law Practice", "development_areas": ["writing"]}}
+    assert {me: c.mentor_id for me, c in assign(mentees, mentors).items()} == {1: 10, 2: 20}
+    skills_first = matching.weights_from_percents(_percents(industry=10, development_areas=38))
+    assert {me: c.mentor_id for me, c in assign(mentees, mentors, weights=skills_first).items()} == {1: 20, 2: 10}
+
+
+def test_a_pair_with_no_weighted_dimension_to_compare_scores_zero():
+    all_text = matching.weights_from_percents(
+        _percents(industry=0, development_areas=0, goals=0, text=100, education_paths=0, alumni=0))
+    assert score_pair(MENTEE, MENTEE, all_text)[0] == 0.0  # no text vectors, and everything else weighs 0
+
+
+def test_propose_all_records_the_weights_it_used(app):
+    custom = matching.weights_from_percents(_percents(industry=40, text=8))
+    created = matching.propose_all(custom)
+    assert len(created) == 4
+    assert all(m.score_breakdown["weights"] == custom for m in created)

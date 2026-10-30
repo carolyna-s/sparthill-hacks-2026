@@ -2,14 +2,117 @@
 {% from "_macros.html" import csrf, card, btn, tags %}
 {% from "staff/_match.html" import why, score_or_flag, denial, post, decision_actions with context %}
 {% block main_class %}max-w-7xl mx-auto px-4 py-6{% endblock %}
+{% block head %}
+<style>
+  /* Weights bar dividers. Odd dividers have their tab above the bar, even ones below, and each
+     only catches the pointer on its own half, so two dividers at the same spot stay grabbable. */
+  .weights-handle { position: absolute; width: 24px; height: 36px; transform: translateX(-50%); touch-action: none; cursor: ew-resize; outline: none; }
+  .weights-handle.up { top: -20px; }
+  .weights-handle.down { top: 16px; }
+  .weights-handle-tab { position: absolute; left: 4px; width: 16px; height: 14px; border-radius: 4px; background: #fff; border: 1px solid #334155; box-shadow: 0 1px 2px rgb(15 23 42 / .25); }
+  .weights-handle.up .weights-handle-tab { top: 0; }
+  .weights-handle.down .weights-handle-tab { bottom: 0; }
+  .weights-handle-line { position: absolute; left: 11px; width: 2px; height: 32px; background: #fff; box-shadow: 0 0 0 1px rgb(15 23 42 / .7); pointer-events: none; }
+  .weights-handle.up .weights-handle-line { top: 20px; }
+  .weights-handle.down .weights-handle-line { top: -16px; }
+  .weights-handle:focus-visible .weights-handle-tab { outline: 3px solid #0055a2; outline-offset: 2px; }
+  .weights-handle[aria-disabled="true"] { cursor: not-allowed; }
+  .weights-handle[aria-disabled="true"] .weights-handle-tab { background: #e2e8f0; border: 1px dashed #64748b; box-shadow: none; }
+  .weights-handle[aria-disabled="true"] .weights-handle-line { opacity: .4; }
+  [data-weights]:not([data-ready]) [data-js-only] { display: none !important; }
+</style>
+{% endblock %}
 {% block content %}
+{# The weights bar's categories in bar order (keys are matching.MAIN), and Okabe-Ito colors,
+   which stay distinct with color blindness. #}
+{% set weight_labels = [('industry', 'Industry'), ('development_areas', 'Skills'), ('goals', 'Goals'),
+                        ('text', 'Free text, embeddings'), ('education_paths', 'Education path'),
+                        ('alumni', 'Alumni preference')] %}
+{% set weight_colors = ['#0072B2', '#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00'] %}
+{% set lock_path = "M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" %}
 <div class="flex flex-wrap gap-2 justify-between items-center mb-5">
   <h1 class="text-2xl font-semibold">Matching</h1>
-  <div class="flex gap-2 items-start">
+  <div class="flex flex-wrap gap-2 items-start w-full sm:w-auto">
     {% if proposed %}{{ post(url_for('staff.cancel_proposals'), "Cancel all proposals",
         confirm="Cancel every proposal? The mentees go back to unmatched.", fields={'all': 1}) }}{% endif %}
-    <form method="post" action="{{ url_for('staff.propose_all') }}" class="text-right">{{ csrf() }}
-      {{ btn("Run matching (" ~ unmatched|length ~ " in pool)") }}
+    <form method="post" action="{{ url_for('staff.propose_all') }}" class="relative text-right w-full sm:w-auto">{{ csrf() }}
+      <div class="flex flex-wrap gap-2 justify-end items-start">
+        <details data-weights class="group/weights w-full sm:w-auto order-last sm:order-first text-left">
+          <summary class="list-none cursor-pointer inline-flex items-center gap-1 text-sm font-medium rounded-lg px-3 py-1.5 border bg-white hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+            <span data-weights-summary>Default weights</span>
+            <svg class="h-4 w-4 text-slate-500 transition-transform motion-reduce:transition-none group-open/weights:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+          </summary>
+          <fieldset class="mt-2 sm:absolute sm:right-0 sm:top-full sm:z-20 w-full sm:w-[36rem] rounded-xl border border-slate-200 bg-white shadow-lg p-4">
+            <legend class="sr-only">Matching weights</legend>
+            <p class="text-sm font-semibold">How much each category counts</p>
+            <p class="text-xs text-slate-500" data-js-only>Drag a divider to move weight between the categories beside it. Locked categories keep their share.</p>
+
+            <div class="px-1 pt-6 pb-7">
+              <div data-weights-track class="relative h-8">
+                <div class="flex h-full rounded overflow-hidden bg-slate-100">
+                  {% for key, label in weight_labels %}
+                    <div data-segment class="h-full shrink-0 flex items-center justify-center overflow-hidden"
+                         style="width: {{ weight_defaults[key] }}%; background-color: {{ weight_colors[loop.index0] }}">
+                      <span data-segment-lock hidden class="rounded-full bg-white/90 p-0.5 text-slate-800">
+                        <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="{{ lock_path }}" clip-rule="evenodd"/></svg>
+                      </span>
+                    </div>
+                  {% endfor %}
+                </div>
+                {# Faint ticks where the default boundaries are. #}
+                {% set ns = namespace(at=0) %}
+                {% for key, label in weight_labels[:-1] %}
+                  {% set ns.at = ns.at + weight_defaults[key] %}
+                  <span aria-hidden="true" class="absolute -top-1.5 h-1.5 w-px bg-slate-400/70" style="left: {{ ns.at }}%"></span>
+                {% endfor %}
+                <div data-js-only>
+                  {% for key, label in weight_labels[:-1] %}
+                    <div data-handle role="slider" tabindex="0" aria-describedby="weights-note"
+                         aria-label="Boundary between {{ label }} and {{ weight_labels[loop.index][1] }}"
+                         class="weights-handle {{ 'up' if loop.index0 is even else 'down' }}">
+                      <span class="weights-handle-line"></span><span class="weights-handle-tab"></span>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <ul class="divide-y divide-slate-100">
+              {% for key, label in weight_labels %}
+                <li data-weight-row="{{ key }}" data-label="{{ label }}" data-default="{{ weight_defaults[key] }}"
+                    class="flex items-center gap-2 py-1.5 text-sm">
+                  <span class="h-3 w-3 shrink-0 rounded-sm" style="background-color: {{ weight_colors[loop.index0] }}" aria-hidden="true"></span>
+                  <button type="button" data-js-only data-lock aria-pressed="false" aria-label="Lock {{ label }}" title="Lock {{ label }}"
+                          class="shrink-0 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 aria-pressed:bg-slate-200 aria-pressed:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-600">
+                    <svg data-icon-open class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M14.5 1A4.5 4.5 0 0 0 10 5.5V9H3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5V5.5a3 3 0 1 1 6 0v2.75a.75.75 0 0 0 1.5 0V5.5A4.5 4.5 0 0 0 14.5 1Z" clip-rule="evenodd"/></svg>
+                    <svg data-icon-closed hidden class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="{{ lock_path }}" clip-rule="evenodd"/></svg>
+                  </button>
+                  <span class="min-w-0 flex-1">{{ label }} <code class="block sm:inline text-[11px] text-slate-500">{{ key }}</code></span>
+                  <output data-percent class="w-10 text-right font-semibold tabular-nums">{{ weight_defaults[key] }}%</output>
+                  <span data-delta class="w-7 text-right text-xs text-slate-500 tabular-nums"></span>
+                  <input type="hidden" name="weight_{{ key }}" value="{{ weight_defaults[key] }}">
+                </li>
+              {% endfor %}
+            </ul>
+            <p class="mt-1 text-sm font-semibold text-right pr-9">Total <output data-weights-total>100</output>%</p>
+            <p id="weights-note" data-weights-note hidden aria-live="polite" class="mt-1 text-xs text-amber-700"></p>
+
+            <div class="mt-4 pt-4 border-t border-slate-200">
+              <label for="weight-languages" class="flex items-baseline gap-2 text-sm">
+                <span class="font-medium">Language bonus</span> <code class="text-[11px] text-slate-500">languages</code>
+                <output for="weight-languages" data-bonus-out class="ml-auto font-semibold tabular-nums">{{ weight_defaults.languages }}%</output>
+              </label>
+              <input id="weight-languages" data-bonus data-default="{{ weight_defaults.languages }}" type="range" name="weight_languages"
+                     min="0" max="{{ max_bonus }}" step="1" value="{{ weight_defaults.languages }}"
+                     aria-describedby="weight-languages-help" class="w-full accent-brand-600">
+              <p id="weight-languages-help" class="text-xs text-slate-500">Only counts when a pair shares a language other than English. Adds to the score; not part of the 100%.</p>
+            </div>
+            <p class="mt-3 text-xs text-slate-500">Manual proposals still use the default weights.</p>
+          </fieldset>
+        </details>
+        {{ btn("Run matching (" ~ unmatched|length ~ " in pool)") }}
+      </div>
       <p class="text-xs text-slate-500 mt-1">Unmatched and rejected mentees, with the mentors still free. Approved matches stay as they are.</p></form>
   </div>
 </div>
@@ -138,4 +241,140 @@
   </div>
 {% else %}<p class="text-sm text-slate-500">No rejections yet.</p>{% endfor %}
 {% endcall %}
+
+<script>
+  // Weights bar model: whole percents per category that always add up to 100, and a lock per
+  // category. Pure functions, kept apart from the DOM code below.
+
+  // What divider `handle` (between categories handle and handle + 1) can do: it moves weight
+  // between the nearest unlocked category on each side, and the locked ones in between keep
+  // their width and slide along. null when one side has no unlocked category.
+  function boundaryRange(widths, locked, handle) {
+    let left = handle, right = handle + 1;
+    while (left >= 0 && locked[left]) left--;
+    while (right < widths.length && locked[right]) right++;
+    if (left < 0 || right >= widths.length) return null;
+    const value = widths.slice(0, handle + 1).reduce((a, b) => a + b, 0);
+    return {left, right, value, min: value - widths[left], max: value + widths[right]};
+  }
+
+  // The widths after moving divider `handle` by `delta` percent: the nearest unlocked category
+  // on the left grows by it and the one on the right shrinks, neither going below 0.
+  function moveBoundary(widths, locked, handle, delta) {
+    const range = boundaryRange(widths, locked, handle);
+    const out = widths.slice();
+    if (!range) return out;
+    const d = Math.max(-widths[range.left], Math.min(widths[range.right], Math.round(delta)));
+    out[range.left] += d;
+    out[range.right] -= d;
+    return out;
+  }
+
+  document.querySelectorAll("[data-weights]").forEach((panel) => {
+    const rows = [...panel.querySelectorAll("[data-weight-row]")];
+    const labels = rows.map((row) => row.dataset.label);
+    const defaults = rows.map((row) => Number(row.dataset.default));
+    const inputs = rows.map((row) => row.querySelector("input[type=hidden]"));
+    const track = panel.querySelector("[data-weights-track]");
+    const segments = [...panel.querySelectorAll("[data-segment]")];
+    const handles = [...panel.querySelectorAll("[data-handle]")];
+    const bonus = panel.querySelector("[data-bonus]");
+    const note = panel.querySelector("[data-weights-note]");
+    // Start from the inputs, not the defaults: the browser may have kept them on Back.
+    let widths = inputs.map((input) => Number(input.value));
+    const locked = widths.map(() => false);
+
+    const sum = (values) => values.reduce((a, b) => a + b, 0);
+    const delta = (d) => (d > 0 ? `+${d}` : d < 0 ? `−${-d}` : "");
+    const blocked = (i) => {
+      const left = locked.slice(0, i + 1).every(Boolean), right = locked.slice(i + 1).every(Boolean);
+      const side = left && right ? "both sides" : left ? "the left" : "the right";
+      return `Can't move this divider: every category on ${side} is locked. Unlock one to move it.`;
+    };
+
+    function render() {
+      widths.forEach((w, i) => {
+        segments[i].style.width = `${w}%`;
+        segments[i].querySelector("[data-segment-lock]").hidden = !(locked[i] && w >= 6);
+        inputs[i].value = w;
+        rows[i].querySelector("[data-percent]").value = `${w}%`;
+        rows[i].querySelector("[data-delta]").textContent = delta(w - defaults[i]);
+        const lock = rows[i].querySelector("[data-lock]");
+        lock.setAttribute("aria-pressed", String(locked[i]));
+        lock.title = `${locked[i] ? "Unlock" : "Lock"} ${labels[i]}`;
+        lock.querySelector("[data-icon-open]").toggleAttribute("hidden", locked[i]);
+        lock.querySelector("[data-icon-closed]").toggleAttribute("hidden", !locked[i]);
+      });
+      handles.forEach((handle, i) => {
+        const range = boundaryRange(widths, locked, i);
+        const value = sum(widths.slice(0, i + 1));
+        const [l, r] = range ? [range.left, range.right] : [i, i + 1];
+        handle.style.left = `${value}%`;
+        handle.setAttribute("aria-valuenow", value);
+        handle.setAttribute("aria-valuemin", range ? range.min : value);
+        handle.setAttribute("aria-valuemax", range ? range.max : value);
+        handle.setAttribute("aria-valuetext", `${labels[l]} ${widths[l]} percent, ${labels[r]} ${widths[r]} percent`);
+        if (range) handle.removeAttribute("aria-disabled");
+        else handle.setAttribute("aria-disabled", "true");
+        handle.title = range ? "" : blocked(i);
+      });
+      panel.querySelector("[data-weights-total]").value = sum(widths);
+      panel.querySelector("[data-bonus-out]").value = `${bonus.value}%`;
+      const custom = widths.some((w, i) => w !== defaults[i]) || Number(bonus.value) !== Number(bonus.dataset.default);
+      panel.querySelector("[data-weights-summary]").textContent = custom ? "Custom weights" : "Default weights";
+    }
+
+    const explain = (i) => {
+      note.textContent = blocked(i);
+      note.hidden = false;
+    };
+    const move = (i, by) => {
+      if (!boundaryRange(widths, locked, i)) return explain(i);
+      widths = moveBoundary(widths, locked, i, by);
+      render();
+    };
+
+    handles.forEach((handle, i) => {
+      // Every pointermove recomputes from the widths at pointerdown, so rounding never drifts.
+      let start = null;
+      handle.addEventListener("pointerdown", (event) => {
+        handle.focus();
+        const range = boundaryRange(widths, locked, i);
+        if (!range) return explain(i);
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        start = {widths: widths.slice(), value: range.value};
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!start) return;
+        const rect = track.getBoundingClientRect();
+        const target = Math.round(((event.clientX - rect.left) / rect.width) * 100);
+        widths = moveBoundary(start.widths, locked, i, target - start.value);
+        render();
+      });
+      for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+        handle.addEventListener(type, () => { start = null; });
+      }
+      handle.addEventListener("keydown", (event) => {
+        const range = boundaryRange(widths, locked, i);
+        const steps = {ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1, PageDown: -5, PageUp: 5};
+        let by;
+        if (event.key in steps) by = event.shiftKey ? Math.sign(steps[event.key]) * 5 : steps[event.key];
+        else if (event.key === "Home") by = range ? range.min - range.value : 0;
+        else if (event.key === "End") by = range ? range.max - range.value : 0;
+        else return;
+        event.preventDefault();
+        move(i, by);
+      });
+    });
+    rows.forEach((row, i) => row.querySelector("[data-lock]").addEventListener("click", () => {
+      locked[i] = !locked[i];
+      note.hidden = true;
+      render();
+    }));
+    bonus.addEventListener("input", render);
+    render();
+    panel.dataset.ready = "";
+  });
+</script>
 {% endblock %}

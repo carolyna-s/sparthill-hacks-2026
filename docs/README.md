@@ -81,7 +81,8 @@ Staff land on **Dashboard** (Staff Overview) and work through the cycle from the
   Staff can view application responses, attendance, and match information; application decisions
   are automatic at submission.
 - **Matching:** *Auto-propose* runs the engine over everyone accepted and unmatched, or propose
-  for one mentee. Staff **approve** to release a match to the mentee for confirmation, **reject**
+  for one mentee. The weights panel next to it changes how much each category counts for that
+  run (docs/PLAN.md §4.7). Staff **approve** to release a match to the mentee for confirmation, **reject**
   (needs a reason; the pair is never proposed again), or cancel proposals. Reviews started from
   the proposal list continue through the remaining proposals until staff exits or the queue is
   complete. Mentees must confirm before a match becomes active; declining a mentor returns them

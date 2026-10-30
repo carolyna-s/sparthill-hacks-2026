@@ -90,7 +90,14 @@
       {% endcall %}
     {% endif %}
 
-    {% call card("Why they were matched") %}{{ why(m.score_breakdown) }}{% endcall %}
+    {% call card("Why they were matched") %}
+      {% set used = m.score_breakdown.get('weights') %}
+      {% if used and used != default_weights %}
+        <p class="text-xs font-medium rounded px-2 py-1 mb-2 bg-sky-50 text-sky-800">Scored with custom weights:
+          <span class="font-normal">{% for dim, w in used.items() %}{{ dim.replace('_', ' ') }} {{ (w * 100)|round|int }}%{{ ' (bonus)' if dim == 'languages' }}{{ ', ' if not loop.last }}{% endfor %}</span></p>
+      {% endif %}
+      {{ why(m.score_breakdown) }}
+    {% endcall %}
 
     {% if mentees_of_mentor %}
       {% call card(m.mentor.name.split()[0] ~ " is also matched with") %}

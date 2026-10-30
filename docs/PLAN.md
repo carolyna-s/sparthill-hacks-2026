@@ -201,6 +201,24 @@ matches are out of it for good, and each new proposal records its `rematch_round
 α, the experience gap, λ, K, and the context range are all in the active `matching_config`
 (versioned, set by backend).
 
+### 4.7 Weights bar (custom weights for one run)
+
+**Built:** next to *Run matching* on the staff Matching page, a collapsible **Default weights /
+Custom weights** panel lets staff change how much each category counts for that run only. One
+stacked bar holds the six main categories (industry, skills, goals, free text, education path,
+alumni), always adding up to 100%; dragging a divider (or focusing it and using the arrow keys)
+moves weight between the nearest unlocked category on each side, and locked categories keep
+their share. The language bonus is a separate 0-30% slider outside the 100%. Defaults come from
+`WEIGHTS` in `app/matching.py`; nothing is saved between runs.
+
+The server re-checks every submitted value (`matching.weights_from_percents`: numbers, each main
+category 0-100 and together exactly 100, bonus 0-30) and runs nothing on a bad value. A field
+missing from the form keeps its default. Only *Run matching* uses custom weights: the suggested
+mentors and *Add to proposals* stay on the defaults. Each match the run creates stores the
+weights it was scored with in `score_breakdown.weights` (the match page notes "Scored with custom
+weights" when they differ from the defaults), and each run adds a `matching_run` entry to the
+audit log with the weights, whether they were custom, and how many matches it proposed.
+
 ## 5. Match review (staff) and the feedback loop
 
 ### 5.1 Review screen: percent match view
