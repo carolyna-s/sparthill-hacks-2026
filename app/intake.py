@@ -24,6 +24,12 @@ def require_profile_setup():
         return None
     if profile_setup_complete(current_user):
         session.pop(_onboarding_session_key(current_user), None)
+        # Submitted before a question became required: send them to fill it in on the application page.
+        if (current_user.application is not None and current_user.application.status != "draft"
+                and request.endpoint not in {"static", "auth.logout", "main.update_application"}
+                and missing_required_answers(current_user)):
+            flash("Please answer the new required questions on your application.", "error")
+            return redirect(url_for("main.update_application"))
         return None
     if request.endpoint in {"static", "auth.logout", "intake.profile", "intake.profile_step",
                             "intake.account_profile"}:
@@ -110,25 +116,26 @@ def signup_next_step(user: User) -> str | None:
     return None
 
 
-def missing_setup_answers(user: User) -> list[str]:
-    """Return required free-response prompts left blank during account setup."""
+def missing_required_answers(user: User) -> list[str]:
+    """Return the required free-response prompts this user has left blank, whatever the status."""
     profile = user.profile
-    prompts = Industry_Relevant_Prompt_Data[user.role]
     missing = [
-        label for field, label in prompts.items()
+        label for field, label in Industry_Relevant_Prompt_Data[user.role].items()
         if not (getattr(profile, field) or "").strip()
     ]
-    application = user.application
-    if application is None:
-        return missing + [label for _, label in Personality_Questions_Data[user.role]]
-    if application.status != "draft":
-        return []
-    answers = application.answers or {}
+    answers = (user.application.answers if user.application else None) or {}
     missing.extend(
         label for key, label in Personality_Questions_Data[user.role]
         if not (answers.get(key) or "").strip()
     )
     return missing
+
+
+def missing_setup_answers(user: User) -> list[str]:
+    """Return required free-response prompts left blank during account setup."""
+    if user.application is not None and user.application.status != "draft":
+        return []
+    return missing_required_answers(user)
 
 
 def profile_setup_complete(user: User) -> bool:
@@ -354,7 +361,7 @@ def _save_preferences(user: User) -> bool:
 
 
 def _save_questions(user: User) -> bool:
-    for f in ("interests", "looking_for"):
+    for f in Industry_Relevant_Prompt_Data[user.role]:  # only this role's prompts are on the form
         setattr(user.profile, f, request.form.get(f, "").strip())
     app_row = _application(user)
     if app_row.status == "draft":

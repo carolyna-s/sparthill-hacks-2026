@@ -10,7 +10,7 @@ from datetime import datetime, time, timedelta
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import notify, storage
+from . import ics, notify, storage
 from .extensions import db
 from .models import (Agreement, AgreementSignature, Attendance, Event, Feedback, Match, Meeting, Message,
                      Submission, User, utcnow)
@@ -142,8 +142,10 @@ def module(event_id: int):
     mentees = mentees_of(current_user) if current_user.role == "mentor" else []
     mentee_subs = {(s.user_id, s.kind): s for s in db.session.query(Submission)
                    .filter(Submission.event_id == e.id, Submission.user_id.in_([u.id for u in mentees]))}
+    feedback = db.session.query(Feedback).filter_by(event_id=e.id, user_id=current_user.id).first()
     return render_template("program/module.html", e=e, subs=subs, attended=attended,
-                           mentees=mentees, mentee_subs=mentee_subs)
+                           mentees=mentees, mentee_subs=mentee_subs, feedback=feedback,
+                           gcal_url=ics.google_link(ics.session_item(e)))
 
 
 @bp.post("/modules/<int:event_id>/submit/<kind>")
@@ -186,6 +188,8 @@ def submission_file(submission_id: int):
 @login_required
 def checkin(event_id: int):
     e = db.get_or_404(Event, event_id)
+    if current_user.role != "mentee":  # a pair has met when the mentee checks in; mentors don't
+        abort(403)
     if request.form.get("code", "").strip().upper() != e.checkin_code.upper():
         flash("That check-in code doesn't match.", "error")
     elif not db.session.query(Attendance).filter_by(event_id=e.id, user_id=current_user.id).first():
@@ -210,7 +214,8 @@ def feedback():
     db.session.add(Feedback(user_id=current_user.id, event_id=event_id, match_id=match_id, rating=rating,
                             comment=request.form.get("comment", "").strip()))
     db.session.commit()
-    flash("Thanks for the feedback.", "ok")
+    if match_id:  # module feedback shows its own thank-you in place of the form
+        flash("Thanks for the feedback.", "ok")
     return redirect(request.referrer or url_for("main.dashboard"))
 
 
@@ -372,12 +377,15 @@ def respond_meeting(meeting_id: int, action: str):
     if action == "accept" and status == "proposed" and not mine:
         mt.status = "confirmed"
         _post_to_thread(match_id, f"✅ Confirmed the meeting on {when}.")
+        notify.notify_meeting(mt)
         flash("Meeting confirmed. It's on both of your calendars.", "ok")
     elif action == "decline" and status == "proposed" and not mine:
         db.session.delete(mt)
         _post_to_thread(match_id, f"Declined the proposed meeting on {when}. Suggest another time?")
         flash("Declined. You can propose a different time.", "ok")
     elif action == "cancel" and (status == "confirmed" or mine):
+        if status == "confirmed":
+            notify.notify_meeting(mt, cancelled=True)  # takes the invite back off their calendars
         db.session.delete(mt)
         verb = "Cancelled the meeting" if status == "confirmed" else "Withdrew the proposed meeting"
         _post_to_thread(match_id, f"{verb} on {when}.")

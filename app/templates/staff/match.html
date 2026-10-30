@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import csrf, card, btn, status_badge, input_cls %}
-{% from "staff/_match.html" import why, score_or_flag, profile_facts, denial, post with context %}
+{% from "staff/_match.html" import why, score_or_flag, profile_facts, denial, post, decision_actions with context %}
 {# One page, three uses: the full overview ("More info"), and the confirmation step for
    ?action=approve or ?action=reject. #}
 {% block content %}
@@ -69,10 +69,7 @@
     {% elif m.status == 'proposed' %}
       {% call card("Decision") %}
         <div class="flex flex-wrap gap-2">
-          <a href="{{ url_for('staff.match_review', match_id=m.id, action='approve', queue=1 if queue else None) }}" class="text-sm rounded px-3 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700">Approve…</a>
-          <a href="{{ url_for('staff.match_review', match_id=m.id, action='reject', queue=1 if queue else None) }}" class="text-sm rounded px-3 py-1.5 border hover:bg-slate-50">Reject…</a>
-          {{ post(url_for('staff.cancel_proposals'), "Cancel proposal", fields={'ids': m.id},
-                  next=url_for('staff.matching_page')) }}
+          {{ decision_actions(m, queue=queue, next=url_for('staff.matching_page'), cancel_next=url_for('staff.matching_page')) }}
         </div>
       {% endcall %}
     {% elif m.status == 'released' %}

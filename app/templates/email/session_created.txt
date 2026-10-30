@@ -1,0 +1,15 @@
+New session: {{ event.title }} on {{ event.starts_at.strftime('%a, %b %d') }}
+Hi {{ user.name }},
+
+{{ event.title }} is scheduled for {{ event.starts_at.strftime('%a, %b %d at %I:%M %p') }}{% if event.location %} at {{ event.location }}{% endif %}.
+{% if event.description %}
+{{ event.description }}
+{% endif %}{% if user.role == "mentee" and event.prework_prompt and event.prework_due %}
+Pre-work is due {{ event.prework_due.strftime('%b %d at %I:%M %p') }}.
+{% endif %}
+The calendar invite is attached. Accept it to add the session to your calendar.
+
+Details:
+{{ base_url }}/modules/{{ event.id }}
+
+Spartan Mentorship Program

@@ -176,7 +176,7 @@ def test_mentee_intake_flow(client):
         "industry": "  software   DEVELOPMENT ",
         "development_areas": ["Open to Any"],
         "goals": ["Undecided"],
-        "education_paths": ["Undecided"],
+        "education_paths": ["4-year university"],
         "goals_other": "write a book",
         "prefers_alumni": "1",
     }
@@ -187,7 +187,7 @@ def test_mentee_intake_flow(client):
     assert resp.headers["Location"].endswith("/profile/4")
     assert user.profile.development_areas == ["Open to Any"]
     assert user.profile.goals == ["Undecided"]
-    assert user.profile.education_paths == ["Undecided"]
+    assert user.profile.education_paths == ["4-year university"]
     assert user.profile.goals_other == "write a book"
     assert user.profile.industry == "Software Development"  # snapped to the suggestion's spelling
     assert user.profile.prefers_alumni
@@ -242,7 +242,7 @@ def test_mentee_intake_flow(client):
         "career_advice": "Actionable career guidance",
     })
     assert resp.headers["Location"].endswith("/apply")
-    assert user.profile.looking_for == "Interview practice"
+    assert user.profile.looking_for is None  # not a mentee prompt, so not taken from the form
     assert user.application.answers == {
         "mentorship_style": "Clear communication",
         "career_advice": "Actionable career guidance",
@@ -505,7 +505,9 @@ def test_reject_match_needs_reason_and_is_never_reproposed(client):
     client.post("/staff/matching/propose-all")
     m, m2 = db.session.query(Match).filter_by(status="proposed").limit(2).all()
     overview = client.get(f"/staff/matches/{m.id}").data
-    assert b"Approve\xe2\x80\xa6" in overview and b"Reject\xe2\x80\xa6" in overview  # "More info": both options
+    for kind in (b"approve", b"reject", b"cancel"):  # "More info": each option behind a confirmation dialog
+        assert b'<dialog id="' + kind + b"-" + str(m.id).encode() + b'"' in overview
+    assert b"Gut feeling" not in overview and b"never be proposed again" in overview
     reject_page = client.get(f"/staff/matches/{m.id}?action=reject").data
     assert b"Reject match" in reject_page and b"Confirm approval" not in reject_page
     assert b"Cancel proposal" not in reject_page and b"Gut feeling" not in reject_page
@@ -880,9 +882,15 @@ def test_staff_report_module_shows_attended_and_absent_users(client):
     event.postwork_prompt = "Write a reflection."
     event.postwork_due = utcnow() + timedelta(days=1)
     jordan = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    priya, marcus, avery = (db.session.query(User).filter_by(name=n).one()
+                            for n in ("Priya Raman", "Marcus Lee", "Avery Patel"))
     db.session.add_all([
+        Match(mentee_id=jordan.id, mentor_id=priya.id, status="approved"),
+        Match(mentee_id=avery.id, mentor_id=marcus.id, status="approved"),
         Attendance(event_id=event.id, user_id=jordan.id),
+        Attendance(event_id=event.id, user_id=marcus.id),  # a mentor check-in doesn't count
         Submission(event_id=event.id, user_id=jordan.id, kind="prework", body="Ready."),
+        Submission(event_id=event.id, user_id=priya.id, kind="prework", body="Mentors don't count."),
         Feedback(user_id=jordan.id, event_id=event.id, rating=4),
     ])
     db.session.commit()
@@ -891,12 +899,19 @@ def test_staff_report_module_shows_attended_and_absent_users(client):
     reports = client.get("/staff/reports")
     assert reports.status_code == 200
     assert f"/staff/reports/modules/{event.id}".encode() in reports.data
+    assert b"Not in a pair" in reports.data and b"Awaiting confirmation" in reports.data
     response = client.get(f"/staff/reports/modules/{event.id}")
     assert response.status_code == 200
-    assert b"Attended (1)" in response.data
-    assert jordan.name.encode() in response.data
-    assert b"Did not attend (" in response.data
-    assert b"Priya Raman" in response.data
+    assert b"Pairs (2)" in response.data
+    pairs_tile = response.data.split(b"Pairs met", 1)[1][:120]
+    assert b">1/2<" in pairs_tile  # Jordan checked in, so Priya's pair met; Avery didn't, so Marcus's didn't
+    mentee_count = db.session.query(User).filter(User.role == "mentee", User.created_at <= event.starts_at).count()
+    assert f">1/{mentee_count}<".encode() in response.data.split(b"Mentees checked in", 1)[1][:120]
+    assert response.data.count(b"Did not meet") == 1
+    assert b"Priya Raman" in response.data and jordan.name.encode() in response.data
+    assert b"Partially" not in response.data and b"Not in a pair" not in response.data
+    prework_tile = response.data.split(b"Prework submitted", 1)[1][:120]
+    assert f">1/{mentee_count}<".encode() in prework_tile  # Priya's submission isn't counted
     for detail in (b"Module details", b"Main Hall", b"Workshop description", b"Bring a draft resume.",
                    b"Write a reflection.", b"Prework submitted", b"Postwork submitted", b"Average rating",
                    b"4.0", b"submitted"):
@@ -1318,3 +1333,70 @@ def test_meeting_reminder_sent_once_within_24_hours(client):
     assert not db.session.query(ReminderLog).filter_by(key=f"meeting:{later.id}").count()
     send_due_reminders()
     assert db.session.query(ReminderLog).filter_by(key=f"meeting:{soon.id}").count() == 2
+
+
+def test_mentee_module_feedback_panel_after_postwork(client):
+    event = db.session.query(Event).first()
+    event.starts_at = utcnow() - timedelta(days=1)
+    event.postwork_prompt = "Write a reflection."
+    db.session.commit()
+    login(client, "jordan.kim@example.org")
+    assert b"Your feedback is appreciated." not in client.get(f"/modules/{event.id}").data
+
+    client.post(f"/modules/{event.id}/submit/postwork", data={"body": "done"})
+    page = client.get(f"/modules/{event.id}").data
+    assert b"Your feedback is appreciated." in page and b"Thank you for your response." not in page
+
+    client.post("/feedback", data={"event_id": event.id, "rating": 5, "comment": "Great"},
+                headers={"Referer": f"/modules/{event.id}"})
+    assert b"Thank you for your response." in client.get(f"/modules/{event.id}").data
+
+
+def test_submitted_application_with_blank_required_answers_must_fill_them(client):
+    user = db.session.query(User).filter_by(email="jordan.kim@example.org").one()
+    user.application.answers = {**user.application.answers, "career_advice": "  "}
+    db.session.commit()
+    login(client, "jordan.kim@example.org")
+
+    response = client.get("/dashboard")
+    assert response.status_code == 302 and response.location.endswith("/dashboard/application")
+    page = client.get("/dashboard/application")
+    assert b'id="edit-application" hidden' in page.data  # opens in edit mode
+
+    looking_for = user.profile.looking_for
+    form = {"availability": user.profile.availability, "industry": user.profile.industry,
+            "interests": user.profile.interests, "mentorship_style": "Direct feedback",
+            "career_advice": " "}
+    client.post("/dashboard/application", data=form)
+    assert client.get("/dashboard").status_code == 302
+
+    client.post("/dashboard/application", data={**form, "career_advice": "Pick roles with mentorship"})
+    assert user.application.answers["career_advice"] == "Pick roles with mentorship"
+    assert user.profile.looking_for == looking_for  # mentees aren't asked this; it isn't wiped
+    assert client.get("/dashboard").status_code == 200
+
+
+def test_staff_overview_shows_pipeline_and_meetings(client):
+    jordan, avery, priya, marcus = (db.session.query(User).filter_by(name=n).one()
+                                    for n in ("Jordan Kim", "Avery Patel", "Priya Raman", "Marcus Lee"))
+    active = Match(mentee_id=jordan.id, mentor_id=priya.id, status="approved")
+    waiting = Match(mentee_id=avery.id, mentor_id=marcus.id, status="released",
+                    released_at=utcnow() - timedelta(days=3), confirm_by=utcnow() - timedelta(days=1))
+    db.session.add_all([active, waiting])
+    db.session.flush()
+    db.session.add(Meeting(match_id=active.id, starts_at=utcnow() + timedelta(days=2), created_by_id=jordan.id))
+    db.session.commit()
+
+    login(client, "staff.admin@example.org")
+    page = client.get("/staff/").data
+    assert b"Needs attention" in page and b"Upcoming modules" in page
+    assert b"Waiting on participants to confirm" in page and b"Avery Patel" in page
+    assert b"Active matches (1)" in page and b"None scheduled" not in page
+    assert b"Awaiting confirmation" in page
+
+
+def test_only_mentees_check_in(client):
+    event = db.session.query(Event).first()
+    login(client, "priya.raman@example.org")
+    assert client.post(f"/modules/{event.id}/checkin", data={"code": event.checkin_code}).status_code == 403
+    assert db.session.query(Attendance).count() == 0

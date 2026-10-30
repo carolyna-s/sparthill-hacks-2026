@@ -2,9 +2,32 @@
 {% macro avg(x) %}{{ '—' if x is none else ('%.1f'|format(x)) }}{% endmacro %}
 
 {% macro summary(report) %}
+{% set p = report.pipeline %}
 <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5 text-sm">
   <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Participants</dt><dd class="text-2xl font-semibold">{{ report.participants }}</dd><dd class="text-slate-500">{{ report.mentors }} mentors · {{ report.mentees }} mentees</dd></div>
-  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Active matches</dt><dd class="text-2xl font-semibold">{{ report.active_matches }}</dd></div>
+  <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Active matches</dt><dd class="text-2xl font-semibold">{{ report.active_matches }}</dd>
+    <dd class="text-slate-500">{{ p.released }} awaiting confirmation · {{ p.unpaired_mentees|length }} mentee(s) unpaired</dd></div>
   <div class="bg-white border rounded-lg p-4"><dt class="text-slate-500">Avg match rating</dt><dd class="text-2xl font-semibold">{{ avg(report.avg_match_rating) }}</dd></div>
+</dl>
+{% endmacro %}
+
+{# Every pair and accepted participant, by where they stand in matching. #}
+{% macro pipeline(p) %}
+{% set stages = [
+  ('Unpaired mentees', p.unpaired_mentees|length, 'accepted, no match yet'),
+  ('Awaiting staff approval', p.proposed, 'proposed by matching'),
+  ('Awaiting confirmation', p.released, 'released, mentee to confirm'),
+  ('Awaiting override', p.awaiting_override, 'mentor at capacity'),
+  ('Active', p.approved, 'confirmed pairs'),
+  ('Closed', p.closed, 'rejected, withdrawn or ended'),
+] %}
+<dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+  {% for label, n, hint in stages %}
+  <div class="rounded-lg border p-3 {{ 'bg-gold-50 border-gold-200' if n and loop.index <= 4 else 'bg-white' }}">
+    <dt class="text-slate-500">{{ label }}</dt>
+    <dd class="text-xl font-semibold">{{ n }}</dd>
+    <dd class="text-xs text-slate-500">{{ hint }}</dd>
+  </div>
+  {% endfor %}
 </dl>
 {% endmacro %}

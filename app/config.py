@@ -37,6 +37,8 @@ class Config:
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # Gmail: an app password, not the account password
     AWS_REGION = os.getenv("AWS_REGION", "us-west-2")  # for SES
     BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+    # Times people enter are wall-clock times here; calendar invites and feeds convert to UTC (app/ics.py)
+    PROGRAM_TIMEZONE = os.getenv("PROGRAM_TIMEZONE", "America/Los_Angeles")
 
     CRON_SECRET = os.getenv("CRON_SECRET", "")
 

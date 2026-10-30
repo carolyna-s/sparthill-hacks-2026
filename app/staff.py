@@ -16,7 +16,7 @@ from .auth import role_required
 from .extensions import db
 from .intake import Personality_Questions_Data, missing_fields
 from .models import (Application, Attendance, Cohort, Event, Feedback, Match, MatchExclusion,
-                     MatchFeedback, MatchOverrideRequest, Submission, User, utcnow)
+                     MatchFeedback, MatchOverrideRequest, Meeting, Submission, User, utcnow)
 
 bp = Blueprint("staff", __name__, url_prefix="/staff")
 
@@ -64,16 +64,27 @@ def denials_for(match_ids) -> dict[int, list[MatchFeedback]]:
 
 @bp.get("/")
 def overview():
-    applicant_count = (db.session.query(Application)
-                       .filter(Application.status != "draft").count())
-    people = (db.session.query(User).filter(User.role.in_(("mentee", "mentor")))
-              .order_by(User.name).all())
+    now = utcnow()
     pairs = (db.session.query(Match).filter_by(status="approved")
              .join(User, User.id == Match.mentee_id).order_by(User.name).all())
-    return render_template("staff/overview.html", applicant_count=applicant_count, report=report_data(),
-                           mentors=[u for u in people if u.role == "mentor"],
-                           mentees=[u for u in people if u.role == "mentee"], pairs=pairs,
-                           proposed=db.session.query(Match).filter_by(status="proposed").count())
+    # Confirmed meetings per pair: when they last met and when they meet next.
+    last_met, next_meeting = {}, {}
+    for mt in (db.session.query(Meeting).filter(Meeting.status == "confirmed",
+                                                Meeting.match_id.in_([m.id for m in pairs]))
+               .order_by(Meeting.starts_at)):
+        if mt.starts_at < now:
+            last_met[mt.match_id] = mt.starts_at
+        else:
+            next_meeting.setdefault(mt.match_id, mt.starts_at)
+    awaiting_confirmation = (db.session.query(Match).filter_by(status="released")
+                             .order_by(Match.confirm_by).all())
+    return render_template(
+        "staff/overview.html", report=report_data(), pairs=pairs, last_met=last_met, next_meeting=next_meeting,
+        awaiting_confirmation=awaiting_confirmation,
+        applications_to_review=db.session.query(Application).filter_by(status="submitted").count(),
+        upcoming=(db.session.query(Event).filter(Event.starts_at >= now)
+                  .order_by(Event.starts_at).limit(3).all()),
+        now=now)
 
 
 # --- applicants ------------------------------------------------------------------
@@ -431,6 +442,7 @@ def new_event():
         db.session.add(event)
         record_change("module_created", f"Created module: {event.title}.")
         db.session.commit()
+        notify.notify_session_created(event)
         flash("Module created.", "ok")
         return redirect(url_for("program.modules"))
     return render_template("staff/event_form.html")
@@ -438,28 +450,66 @@ def new_event():
 
 # --- reporting ---------------------------------------------------------------------
 
+def active_pairs() -> list[Match]:
+    return db.session.query(Match).filter_by(status="approved").all()
+
+
+def pairs_met(pairs: list[Match], checked_in: set[int]) -> list[Match]:
+    """Pairs whose mentee checked in to the session. Only mentees check in; their mentor is assumed there."""
+    return [m for m in pairs if m.mentee_id in checked_in]
+
+
+def match_pipeline() -> dict:
+    """Where every pair and accepted participant stands in matching."""
+    by_status = dict(db.session.query(Match.status, func.count(Match.id)).group_by(Match.status).all())
+    held = {uid for pair in db.session.query(Match.mentee_id, Match.mentor_id)
+            .filter(Match.status.in_(("proposed", "released", "approved"))) for uid in pair}
+    awaiting_override = {mentee_id for (mentee_id,) in db.session.query(MatchOverrideRequest.mentee_id)
+                         .filter_by(status="pending")}
+    accepted = set(matching.accepted_profiles("mentee")) | set(matching.accepted_profiles("mentor"))
+    unpaired = (db.session.query(User).filter(User.id.in_(accepted - held - awaiting_override))
+                .order_by(User.name).all())
+    return {
+        "approved": by_status.get("approved", 0),
+        "released": by_status.get("released", 0),
+        "proposed": by_status.get("proposed", 0),
+        "awaiting_override": len(awaiting_override),
+        "closed": sum(by_status.get(s, 0) for s in ("rejected", "withdrawn", "ended")),
+        "unpaired_mentees": [u for u in unpaired if u.role == "mentee"],
+        "unpaired_mentors": [u for u in unpaired if u.role == "mentor"],
+    }
+
+
 def report_data() -> dict:
     roles = dict(db.session.query(User.role, func.count(User.id))
                  .filter(User.role.in_(("mentee", "mentor"))).group_by(User.role).all())
     events = db.session.query(Event).order_by(Event.starts_at).all()
     attendance = dict(db.session.query(Attendance.event_id, func.count(Attendance.id))
+                      .join(User, User.id == Attendance.user_id).filter(User.role == "mentee")
                       .group_by(Attendance.event_id).all())
+    # Only mentees submit pre-/post-work; mentors just view it.
     subs = {(e, k): n for e, k, n in db.session.query(Submission.event_id, Submission.kind,
                                                       func.count(Submission.id))
+            .join(User, User.id == Submission.user_id).filter(User.role == "mentee")
             .group_by(Submission.event_id, Submission.kind)}
     event_rating = dict(db.session.query(Feedback.event_id, func.avg(Feedback.rating))
                         .filter(Feedback.event_id.isnot(None)).group_by(Feedback.event_id).all())
     match_rating = db.session.query(func.avg(Feedback.rating)).filter(Feedback.match_id.isnot(None)).scalar()
-    active_matches = db.session.query(Match).filter_by(status="approved").count()
+    pairs = active_pairs()
+    checked_in: dict[int, set[int]] = {}
+    for event_id, user_id in db.session.query(Attendance.event_id, Attendance.user_id):
+        checked_in.setdefault(event_id, set()).add(user_id)
     return {
         "participants": roles.get("mentor", 0) + roles.get("mentee", 0),
         "mentors": roles.get("mentor", 0),
         "mentees": roles.get("mentee", 0),
-        "active_matches": active_matches,
+        "active_matches": len(pairs),
+        "pipeline": match_pipeline(),
         "avg_match_rating": match_rating,
         "events": [{
             "event": e,
             "attended": attendance.get(e.id, 0),
+            "pairs_met": len(pairs_met(pairs, checked_in.get(e.id, set()))),
             "prework": subs.get((e.id, "prework"), 0),
             "postwork": subs.get((e.id, "postwork"), 0),
             "rating": event_rating.get(e.id),
@@ -492,18 +542,26 @@ def event_attendance(event_id: int):
         submission_by_user = set()
     rating = db.session.query(func.avg(Feedback.rating)).filter_by(event_id=event.id).scalar()
     total = len(participants)
-    attended_count = len(attendance_by_user)
+    # Only mentees submit pre-/post-work; mentors just view it.
+    mentees = [user for user in participants if user.role == "mentee"]
+    attended_count = sum(user.id in attendance_by_user for user in mentees)
+    pairs = sorted(active_pairs(), key=lambda m: (m.mentor.name, m.mentee.name))
+    checked_in = {user_id for (user_id,) in db.session.query(Attendance.user_id).filter_by(event_id=event.id)}
+    met = {m.id for m in pairs_met(pairs, checked_in)}
     return render_template(
         "staff/event_attendance.html",
         event=event,
-        attended=[user for user in participants if user.id in attendance_by_user],
-        absent=[user for user in participants if user.id not in attendance_by_user],
+        pairs=pairs,
+        met=met,
         attendance_by_user=attendance_by_user,
         submission_by_user=submission_by_user,
         participant_count=total,
         attended_count=attended_count,
-        attendance_rate=attended_count / total * 100 if total else None,
-        prework_count=sum((user.id, "prework") in submission_by_user for user in participants),
-        postwork_count=sum((user.id, "postwork") in submission_by_user for user in participants),
+        attendance_rate=attended_count / len(mentees) * 100 if mentees else None,
+        work_kinds=[kind for kind in Submission.KINDS if getattr(event, f"{kind}_prompt")],
+        mentees=mentees,
+        mentee_count=len(mentees),
+        prework_count=sum((user.id, "prework") in submission_by_user for user in mentees),
+        postwork_count=sum((user.id, "postwork") in submission_by_user for user in mentees),
         average_rating=rating,
     )

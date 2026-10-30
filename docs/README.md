@@ -252,7 +252,8 @@ Everything is set in `.env` (template in `.env.example`, never commit `.env`):
 | `SUPABASE_STORAGE_BUCKET` | `uploads` | another private bucket |
 | `EMAIL_BACKEND` | `console` (log only) | `smtp` (Gmail: set `MAIL_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD` = app password) or `ses` |
 | `CRON_SECRET` | cron endpoint disabled | shared secret for `POST /internal/cron/reminders` |
-| `BASE_URL` | `http://localhost:8000` | the public URL used in email links (the Cloud Run URL in production) |
+| `BASE_URL` | `http://localhost:8000` | the public URL used in email links and calendar feeds (the Cloud Run URL in production; Google can't subscribe to a localhost feed) |
+| `PROGRAM_TIMEZONE` | `America/Los_Angeles` | timezone of the session and meeting times people enter; used to build calendar invites and feeds |
 | `ANTHROPIC_API_KEY` | planned chatbot and resume parsing off | API key |
 | `OPENAI_API_KEY` | text answers not used in matching | OpenAI API key (embeddings only), then run `flask embed` once |
 

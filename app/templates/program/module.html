@@ -80,7 +80,8 @@
 
 <header class="mt-3 mb-8">
   <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-brand-950">{{ e.title }}</h1>
-  <p class="text-sm text-slate-500 mt-1">{{ e.starts_at.strftime('%A, %b %d · %I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}</p>
+  <p class="text-sm text-slate-500 mt-1">{{ e.starts_at.strftime('%A, %b %d · %I:%M %p') }}{% if e.location %} · {{ e.location }}{% endif %}
+    · <a href="{{ gcal_url }}" target="_blank" rel="noopener" class="text-brand-600 hover:underline">Add to Google Calendar ↗</a></p>
   {% if e.description %}<p class="text-slate-700 mt-4 leading-relaxed">{{ e.description }}</p>{% endif %}
 </header>
 
@@ -108,9 +109,36 @@
   {% else %}
     {% call step(2 if has_pre else 1, "Session", e.starts_at.strftime('%A, %b %d · %I:%M %p'), last=not has_post) %}
       <p class="text-sm text-slate-600">{{ e.location or 'Location to be announced.' }}</p>
+      <p class="text-xs text-slate-500 mt-1">Your mentee checks in for the two of you.</p>
     {% endcall %}
   {% endif %}
 
   {% if has_post %}{{ work_step('postwork', 3 if has_pre else 2, last=True) }}{% endif %}
 </ol>
+
+{# Mentee feedback on the module, once their post-work is in. #}
+{% if current_user.role == 'mentee' and has_post and subs.get('postwork') %}
+<section class="mt-8 ml-12 bg-white border border-slate-200 rounded-2xl shadow-sm p-5 sm:p-6">
+  <h2 class="font-semibold text-slate-900">Your feedback is appreciated.</h2>
+  {% if feedback %}
+    <p class="mt-3 text-sm text-emerald-700">Thank you for your response.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('program.feedback') }}" class="mt-3 space-y-3">
+    {{ csrf() }}
+    <input type="hidden" name="event_id" value="{{ e.id }}">
+    {# Stars run 5→1 in the DOM and are flipped visually, so `~` sibling selectors light up every star up to the one picked or hovered. #}
+    <div class="flex flex-row-reverse justify-end gap-1 text-3xl text-slate-300" role="radiogroup" aria-label="Rating">
+      {% for n in range(5, 0, -1) %}
+        <input type="radio" name="rating" value="{{ n }}" id="rating-{{ n }}" class="peer sr-only" required>
+        <label for="rating-{{ n }}" title="{{ n }} star{{ 's' if n > 1 }}"
+               class="cursor-pointer leading-none peer-checked:text-gold-400 hover:!text-gold-300 [&:hover~label]:!text-gold-300">★</label>
+      {% endfor %}
+    </div>
+    <textarea name="comment" rows="4" placeholder="Tell us your thoughts about this module, or suggestions for improvements"
+              class="{{ input_cls() }} placeholder:text-slate-400"></textarea>
+    {{ btn("Submit") }}
+  </form>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

@@ -24,24 +24,18 @@
 </dl>
 {% endcall %}
 
-<dl class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5 text-sm">
+<h2 class="text-lg font-semibold mt-8 mb-3">Session</h2>
+<dl class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5 text-sm">
   <div class="rounded-lg border bg-white p-4">
-    <dt class="text-slate-500">Attendance</dt>
-    <dd class="text-xl font-semibold">{{ attended_count }}/{{ participant_count }}</dd>
-    <dd class="text-slate-500">{{ "%.0f%%"|format(attendance_rate) if attendance_rate is not none else 'No participants' }}</dd>
+    <dt class="text-slate-500">Pairs met</dt>
+    <dd class="text-xl font-semibold">{{ met|length }}/{{ pairs|length }}</dd>
+    <dd class="text-slate-500">mentee checked in</dd>
   </div>
-  {% if event.prework_prompt %}
   <div class="rounded-lg border bg-white p-4">
-    <dt class="text-slate-500">Prework submitted</dt>
-    <dd class="text-xl font-semibold">{{ prework_count }}/{{ participant_count }}</dd>
+    <dt class="text-slate-500">Mentees checked in</dt>
+    <dd class="text-xl font-semibold">{{ attended_count }}/{{ mentee_count }}</dd>
+    <dd class="text-slate-500">{{ "%.0f%%"|format(attendance_rate) if attendance_rate is not none else 'No mentees' }}</dd>
   </div>
-  {% endif %}
-  {% if event.postwork_prompt %}
-  <div class="rounded-lg border bg-white p-4">
-    <dt class="text-slate-500">Postwork submitted</dt>
-    <dd class="text-xl font-semibold">{{ postwork_count }}/{{ participant_count }}</dd>
-  </div>
-  {% endif %}
   <div class="rounded-lg border bg-white p-4">
     <dt class="text-slate-500">Average rating</dt>
     <dd class="text-xl font-semibold">{{ "%.1f"|format(average_rating) if average_rating is not none else '—' }}</dd>
@@ -53,35 +47,56 @@
   </div>
 </dl>
 
-<div class="grid md:grid-cols-2 gap-5">
-  {% call card("Attended (" ~ attended|length ~ ")") %}
-  <ul class="divide-y text-sm">
-    {% for user in attended %}
-    <li class="py-2">
-      <div><a class="text-brand-600" href="{{ url_for('staff.person', user_id=user.id) }}">{{ user.name }}</a>
-        <span class="text-slate-500">· {{ user.role }} · checked in {{ attendance_by_user[user.id].strftime('%b %d, %I:%M %p') }}</span></div>
-      <div class="mt-1 text-xs text-slate-500">
-        Prework: {{ 'submitted' if (user.id, 'prework') in submission_by_user else 'not submitted' }}
-        · Postwork: {{ 'submitted' if (user.id, 'postwork') in submission_by_user else 'not submitted' }}
-      </div>
-    </li>
-    {% else %}<li class="py-2 text-slate-500">No one has checked in.</li>{% endfor %}
-  </ul>
-  {% endcall %}
+{% call card("Pairs (" ~ pairs|length ~ ")") %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr>
+    <th class="py-2 font-medium">Mentor</th><th class="py-2 font-medium">Mentee</th><th class="py-2 font-medium">Session</th>
+  </tr></thead>
+  <tbody class="divide-y">
+    {% for m in pairs %}
+    <tr>
+      <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.person', user_id=m.mentor_id) }}">{{ m.mentor.name }}</a></td>
+      <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.person', user_id=m.mentee_id) }}">{{ m.mentee.name }}</a></td>
+      <td class="py-2">{% if m.id in met %}<span class="text-emerald-700">✓ Met</span>
+        {% else %}<span class="text-slate-500">Did not meet</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td class="py-2 text-slate-500" colspan="3">No active pairs.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endcall %}
 
-  {% call card("Did not attend (" ~ absent|length ~ ")") %}
-  <ul class="divide-y text-sm">
-    {% for user in absent %}
-    <li class="py-2">
-      <div><a class="text-brand-600" href="{{ url_for('staff.person', user_id=user.id) }}">{{ user.name }}</a>
-        <span class="text-slate-500">· {{ user.role }}</span></div>
-      <div class="mt-1 text-xs text-slate-500">
-        Prework: {{ 'submitted' if (user.id, 'prework') in submission_by_user else 'not submitted' }}
-        · Postwork: {{ 'submitted' if (user.id, 'postwork') in submission_by_user else 'not submitted' }}
-      </div>
-    </li>
-    {% else %}<li class="py-2 text-slate-500">Everyone checked in.</li>{% endfor %}
-  </ul>
-  {% endcall %}
-</div>
+{% set kinds = [('prework', 'Prework'), ('postwork', 'Postwork')]|selectattr(0, 'in', work_kinds)|list %}
+{% if kinds %}
+<h2 class="text-lg font-semibold mt-8 mb-1">Pre-work &amp; post-work</h2>
+<p class="text-sm text-slate-500 mb-3">Mentees only. Mentors can view assignments but don't submit.</p>
+<dl class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5 text-sm">
+  {% for kind, label in kinds %}
+  <div class="rounded-lg border bg-white p-4">
+    <dt class="text-slate-500">{{ label }} submitted</dt>
+    <dd class="text-xl font-semibold">{{ prework_count if kind == 'prework' else postwork_count }}/{{ mentee_count }}</dd>
+    <dd class="text-slate-500">mentees</dd>
+  </div>
+  {% endfor %}
+</dl>
+
+{% call card("Mentee submissions (" ~ mentee_count ~ ")") %}
+<table class="w-full text-sm">
+  <thead class="text-left text-slate-500"><tr>
+    <th class="py-2 font-medium">Mentee</th>
+    {% for kind, label in kinds %}<th class="py-2 font-medium">{{ label }}</th>{% endfor %}
+  </tr></thead>
+  <tbody class="divide-y">
+    {% for user in mentees %}
+    <tr>
+      <td class="py-2"><a class="text-brand-600" href="{{ url_for('staff.person', user_id=user.id) }}">{{ user.name }}</a></td>
+      {% for kind, label in kinds %}
+      <td class="py-2">{% if (user.id, kind) in submission_by_user %}<span class="text-emerald-700">✓ Submitted</span>
+        {% else %}<span class="text-slate-500">Not submitted</span>{% endif %}</td>
+      {% endfor %}
+    </tr>
+    {% else %}<tr><td class="py-2 text-slate-500" colspan="{{ kinds|length + 1 }}">No mentees.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endcall %}
+{% endif %}
 {% endblock %}

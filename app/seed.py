@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from .extensions import db
 from .models import (Agreement, AgreementSignature, Application, Cohort, Event, MatchingConfig, Profile,
@@ -24,12 +24,12 @@ MENTORS = [
 MENTEES = [
     ("Jordan Kim", ["software engineering", "data science"], ["land first job"],
      ["resume and interviewing", "technical skills"]),
-    ("Avery Patel", ["product management", "design"], ["switch careers", "build a network"],
+    ("Avery Patel", ["product management", "design"], ["switch major", "build a network"],
      ["networking", "confidence"]),
     ("Riley Chen", ["public policy", "nonprofit"], ["find a niche"], ["leadership", "public speaking"]),
     ("Taylor Brooks", ["data science", "healthcare"], ["apply to grad school"], ["writing", "technical skills"]),
-    ("Morgan Diaz", ["entrepreneurship", "software engineering"], ["start a business", "lead a team"],
-     ["leadership", "negotiation"]),
+    ("Morgan Diaz", ["entrepreneurship", "software engineering"], ["lead a team"],
+     ["leadership", "networking"]),
 ]
 
 
@@ -93,14 +93,14 @@ POOL_MENTORS = [
 ]
 
 POOL_MENTEES = [
-    ("Sofia Ramirez", ["design", "healthcare"], ["switch careers"], ["confidence", "public speaking"],
+    ("Sofia Ramirez", ["design", "healthcare"], ["switch major"], ["confidence", "public speaking"],
      dict(availability=["Tuesday - afternoon", "Sunday - afternoon"], languages=["English", "Spanish"],
           industry="Hospitals and Health Care", education_paths=["returning / adult learner"],
           school="State University", looking_for="Moving from nursing into health-tech design.")),
-    ("Ethan Walker", ["entrepreneurship", "software engineering"], ["start a business", "build a network"],
-     ["negotiation", "networking"],
+    ("Ethan Walker", ["entrepreneurship", "software engineering"], ["build a network"],
+     ["networking", "leadership"],
      dict(availability=["Wednesday - evening", "Thursday - afternoon", "Sunday - afternoon"], languages=["English"],
-          industry="Software Development", education_paths=["bootcamp / self-taught"], school="City College",
+          industry="Software Development", education_paths=["community college transfer"], school="City College",
           looking_for="Someone who has raised money and can pressure-test my pitch.")),
     ("Noor Ahmed", ["public policy", "education"], ["apply to grad school"], ["writing", "time management"],
      dict(availability=["Sunday - afternoon"], languages=["English", "Arabic"], industry="Higher Education",
@@ -154,6 +154,14 @@ def _activity() -> None:
             u.last_seen_at = u.last_login_at + timedelta(minutes=20)
 
 
+POOL_ANSWERS = {
+    "mentor": {"mentorship_style": "A supportive mentor who shares practical experience.",
+               "career_advice": "Build strong fundamentals and seek feedback early."},
+    "mentee": {"mentorship_style": "Clear communication and actionable feedback.",
+               "career_advice": "How to choose opportunities that build my skills."},
+}
+
+
 def seed_pool() -> int:
     """Add POOL_MENTORS and POOL_MENTEES as accepted and unmatched. Needs `seed` first.
     Skips anyone already there; returns how many were added."""
@@ -172,7 +180,7 @@ def seed_pool() -> int:
             continue
         u.profile = Profile(**profile)
         u.application = Application(cohort_id=cohort.id, status="accepted", submitted_at=utcnow(),
-                                    answers={})
+                                    answers=dict(POOL_ANSWERS[role]))
         db.session.flush()
         db.session.add(AgreementSignature(agreement_id=agreement.id, user_id=u.id, typed_name=name))
         added += 1
@@ -234,4 +242,12 @@ def seed() -> None:
         prework_due=now + timedelta(days=1, hours=12),
         postwork_prompt="Upload your revised resume and note the top three changes your mentor suggested.",
         postwork_due=now + timedelta(days=10)))
+    db.session.add(Event(
+        cohort_id=cohort.id, title="Networking & LinkedIn", starts_at=datetime(2026, 11, 4, 17),
+        location="Student Union, Room 2B", checkin_code="NET01",
+        description="Tighten your LinkedIn profile and practice a 30-second introduction for networking events.",
+        prework_prompt="Update your LinkedIn headline and About section, then paste your profile link.",
+        prework_due=datetime(2026, 11, 1, 17),
+        postwork_prompt="Connect with two people you met at the session and share what you learned from one of them.",
+        postwork_due=datetime(2026, 11, 11, 17)))
     db.session.commit()

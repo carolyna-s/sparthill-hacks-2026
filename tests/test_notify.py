@@ -19,6 +19,8 @@ def test_failed_ses_send_is_logged_and_retried(app, monkeypatch):
         def send_email(self, **kwargs):
             raise RuntimeError("address rejected")
 
+        send_raw_email = send_email  # emails with a calendar invite
+
     monkeypatch.setattr(boto3, "client", lambda *a, **kw: FailingSES())
     app.config["EMAIL_BACKEND"] = "ses"
     assert send_due_reminders() == 0

@@ -1,0 +1,9 @@
+Meeting cancelled: {{ meeting.starts_at.strftime('%a, %b %d') }} with {{ other.name }}
+Hi {{ user.name }},
+
+Your meeting with {{ other.name }} on {{ meeting.when() }} was cancelled. If you accepted the invite, it will come off your calendar.
+
+Pick a new time:
+{{ base_url }}/messages/{{ meeting.match_id }}
+
+Spartan Mentorship Program

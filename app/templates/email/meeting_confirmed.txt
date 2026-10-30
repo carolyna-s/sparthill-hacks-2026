@@ -1,0 +1,12 @@
+Meeting confirmed with {{ other.name }}: {{ meeting.starts_at.strftime('%a, %b %d') }}
+Hi {{ user.name }},
+
+Your meeting with {{ other.name }} is confirmed for {{ meeting.when() }}.{% if meeting.note %}
+{{ meeting.note }}{% endif %}
+
+The calendar invite is attached. Accept it to add the meeting to your calendar.
+
+Message {{ other.name }}:
+{{ base_url }}/messages/{{ meeting.match_id }}
+
+Spartan Mentorship Program

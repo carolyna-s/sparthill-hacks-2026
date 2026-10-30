@@ -1,53 +1,75 @@
 {% extends "base.html" %}
 {% from "_macros.html" import card %}
-{% macro person_list(people) %}
-<ul class="text-sm max-h-64 overflow-y-auto border border-slate-200 rounded-lg divide-y">
-  {% for u in people %}
-  <li class="px-3 py-2"><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=u.id) }}">{{ u.name }}</a></li>
-  {% else %}<li class="px-3 py-2 text-slate-500">None yet.</li>{% endfor %}
-</ul>
-{% endmacro %}
-{# Names of the fields a pair has something in common on ("availability", "languages"), not the values. #}
-{% macro shared_fields(breakdown) -%}
-  {%- set ns = namespace(names=[]) -%}
-  {%- for dim, shared in (breakdown.get('filters') or {}).items() if shared %}{% set ns.names = ns.names + [dim] %}{% endfor -%}
-  {%- for dim, d in breakdown.items() if dim not in ('filters', 'filters_failed', 'fit_if_compatible') and d.shared -%}
-    {%- set ns.names = ns.names + ['written answers' if dim == 'text' else dim.replace('_', ' ')] -%}
-  {%- endfor -%}
-  {{ ns.names|unique|join(', ') or '—' }}
-{%- endmacro %}
+{% from "staff/_summary.html" import summary, pipeline %}
+{% macro date(d) %}{{ d.strftime('%b %d') if d else '—' }}{% endmacro %}
 {% block content %}
 <h1 class="text-2xl font-semibold mb-5">Staff Overview</h1>
+{{ summary(report) }}
+
+{# Things staff can act on now; each links to where it gets done. #}
+{% set p = report.pipeline %}
+{% set todo = [
+  (applications_to_review, 'application(s) to review', url_for('staff.applications')),
+  (p.unpaired_mentees|length, 'accepted mentee(s) without a match', url_for('staff.matching_page')),
+  (p.proposed, 'proposed match(es) awaiting your approval', url_for('staff.matching_page')),
+  (p.awaiting_override, 'capacity override(s) pending', url_for('staff.matching_page')),
+]|selectattr(0)|list %}
+<div class="grid lg:grid-cols-2 gap-5">
+  {% call card("Needs attention") %}
+  <ul class="divide-y text-sm">
+    {% for n, label, url in todo %}
+    <li class="py-2 flex justify-between gap-3"><span><span class="font-semibold">{{ n }}</span> {{ label }}</span>
+      <a class="text-brand-600 whitespace-nowrap" href="{{ url }}">Open →</a></li>
+    {% else %}<li class="py-2 text-slate-500">Nothing waiting on staff.</li>{% endfor %}
+  </ul>
+  {% if awaiting_confirmation %}
+  <h3 class="text-sm font-medium text-slate-500 mt-4 mb-1">Waiting on participants to confirm</h3>
+  <ul class="divide-y text-sm">
+    {% for m in awaiting_confirmation %}
+    <li class="py-2 flex justify-between gap-3">
+      <span><a class="text-brand-600" href="{{ url_for('staff.person', user_id=m.mentor_id) }}">{{ m.mentor.name }}</a>
+        ↔ <a class="text-brand-600" href="{{ url_for('staff.person', user_id=m.mentee_id) }}">{{ m.mentee.name }}</a></span>
+      <span class="text-xs whitespace-nowrap {{ 'text-red-600' if m.confirm_by and m.confirm_by < now else 'text-slate-500' }}">
+        {{ ('confirm by ' ~ date(m.confirm_by)) if m.confirm_by else 'released ' ~ date(m.released_at) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endcall %}
+
+  {% call card("Upcoming modules") %}
+  <ul class="divide-y text-sm">
+    {% for e in upcoming %}
+    <li class="py-2 flex justify-between gap-3">
+      <a class="text-brand-600" href="{{ url_for('staff.event_attendance', event_id=e.id) }}">{{ e.title }}</a>
+      <span class="text-slate-500 whitespace-nowrap">{{ e.starts_at.strftime('%a, %b %d · %I:%M %p') }}</span>
+    </li>
+    {% else %}<li class="py-2 text-slate-500">No upcoming modules.</li>{% endfor %}
+  </ul>
+  <a href="{{ url_for('staff.new_event') }}" class="inline-block mt-3 text-sm text-brand-600">New module →</a>
+  {% endcall %}
+</div>
+
+{% call card("Matches") %}{{ pipeline(p) }}{% endcall %}
+
 <section class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
-  <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-4">
-    <h2 class="font-semibold">Participants ({{ report.participants }})</h2>
-    <span class="text-sm text-slate-500">{{ report.mentors }} mentors · {{ report.mentees }} mentees</span>
-  </div>
-  <div class="grid md:grid-cols-2 gap-6">
-    <div>
-      <h3 class="text-sm font-medium text-slate-500 mb-2">Mentors</h3>
-      {{ person_list(mentors) }}
-    </div>
-    <div>
-      <h3 class="text-sm font-medium text-slate-500 mb-2">Mentees</h3>
-      {{ person_list(mentees) }}
-    </div>
-  </div>
-</section>
-<section class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-5">
-  <h2 class="font-semibold mb-4">Active matches ({{ report.active_matches }})</h2>
+  <h2 class="font-semibold mb-1">Active matches ({{ report.active_matches }})</h2>
+  <p class="text-sm text-slate-500 mb-4">Pairs with no meeting on the calendar may need a nudge.</p>
   {% if pairs %}
   <div class="overflow-x-auto">
   <table class="w-full text-sm">
     <thead class="text-left text-slate-500"><tr>
       <th class="py-1 font-medium">Mentor</th><th class="font-medium">Mentee</th>
-      <th class="font-medium text-right pr-6">Compatibility</th><th class="font-medium">Shared</th><th></th></tr></thead>
+      <th class="font-medium text-right pr-6">Compatibility</th><th class="font-medium">Last met</th>
+      <th class="font-medium">Next meeting</th><th></th></tr></thead>
     {% for m in pairs %}
     <tr class="border-t align-top">
       <td class="py-2"><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=m.mentor_id) }}">{{ m.mentor.name }}</a></td>
       <td class="py-2"><a class="text-brand-600 hover:underline" href="{{ url_for('staff.person', user_id=m.mentee_id) }}">{{ m.mentee.name }}</a></td>
       <td class="py-2 text-right pr-6">{{ '—' if m.score is none else (m.score|round|int ~ '%') }}</td>
-      <td class="py-2 text-slate-600">{{ shared_fields(m.score_breakdown or {}) }}</td>
+      <td class="py-2 text-slate-600">{{ date(last_met.get(m.id)) }}</td>
+      <td class="py-2">{% if next_meeting.get(m.id) %}{{ date(next_meeting[m.id]) }}
+        {% else %}<span class="text-gold-700">None scheduled</span>{% endif %}</td>
       <td class="py-2 text-right whitespace-nowrap"><a class="text-slate-500 hover:text-brand-600" href="{{ url_for('staff.match_review', match_id=m.id) }}">Details →</a></td>
     </tr>
     {% endfor %}
@@ -55,14 +77,4 @@
   </div>
   {% else %}<p class="text-sm text-slate-500">No approved matches yet.</p>{% endif %}
 </section>
-<div class="grid md:grid-cols-2 gap-5">
-  {% call card("Applicants") %}
-    <p class="text-sm mb-3">{{ applicant_count }} submitted application(s).</p>
-    <a href="{{ url_for('staff.applications') }}" class="text-sm text-brand-600">View applicants →</a>
-  {% endcall %}
-  {% call card("Matching") %}
-    <p class="text-sm mb-3">{{ proposed }} proposed match(es) awaiting approval.</p>
-    <a href="{{ url_for('staff.matching_page') }}" class="text-sm text-brand-600">Go to matching →</a>
-  {% endcall %}
-</div>
 {% endblock %}

@@ -137,10 +137,13 @@ EDUCATION_PATHS = [
 
 OPEN_TO_ANY = "Open to Any"
 UNDECIDED = "Undecided"
-MENTEE_DEVELOPMENT_AREAS = [*DEVELOPMENT_AREAS, OPEN_TO_ANY]
-MENTEE_GOALS = [*GOALS, UNDECIDED]
+MENTEE_DEVELOPMENT_AREAS = [*(a for a in DEVELOPMENT_AREAS if a != "negotiation"), OPEN_TO_ANY]
+MENTEE_GOALS = [
+    "land first job", "switch major", "apply to grad school", "build a network",
+    "find a niche", "lead a team", UNDECIDED,
+]
 MENTOR_GOALS = [*GOALS, "entrepreneurship"]
-MENTEE_EDUCATION_PATHS = [*EDUCATION_PATHS, UNDECIDED]
+MENTEE_EDUCATION_PATHS = [p for p in EDUCATION_PATHS if p != "bootcamp / self-taught"]
 
 # Multi-select (tag picker) fields on the profile form.
 TAXONOMY = {

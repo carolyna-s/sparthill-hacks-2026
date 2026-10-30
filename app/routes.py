@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import calendar
 import hmac
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
-from . import embeddings, notify, program
+from . import embeddings, ics, notify, program
 from .extensions import csrf, db
-from .intake import Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields, signup_next_step
+from .intake import (Industry_Relevant_Prompt_Data, Personality_Questions_Data, missing_fields,
+                     missing_required_answers, signup_next_step)
 from .models import Event, Match, MatchExclusion, MatchFeedback, Meeting, Submission, User, utcnow
 from .taxonomy import DAYS, PERIODS, TAXONOMY, taxonomy_for_role, with_base_language
 
@@ -60,7 +61,9 @@ def dashboard():
                            upcoming=upcoming, todo=program.todo_for(current_user),
                            meeting_requests=program.meeting_requests_for(current_user),
                            Personality_Questions_Data=Personality_Questions_Data,
-                           cal=_month_calendar(meetings))
+                           cal=_month_calendar(meetings, request.args.get("month")),
+                           ics=ics, gcal_subscribe=ics.google_subscribe_url(current_user),
+                           feed_url=ics.feed_url(current_user))
 
 
 @bp.get("/matches/<int:match_id>/confirmation")
@@ -219,7 +222,8 @@ def update_application():
         return render_template("application.html", application=application,
                                Personality_Questions_Data=Personality_Questions_Data,
                                Industry_Relevant_Prompt_Data=Industry_Relevant_Prompt_Data,
-                               taxonomy=taxonomy_for_role(current_user.role), DAYS=DAYS, PERIODS=PERIODS)
+                               taxonomy=taxonomy_for_role(current_user.role), DAYS=DAYS, PERIODS=PERIODS,
+                               editing=bool(missing_required_answers(current_user)))
 
     profile = current_user.profile
     taxonomy = taxonomy_for_role(current_user.role)
@@ -240,8 +244,8 @@ def update_application():
     profile.education_paths = [value for value in request.form.getlist("education_paths")
                                if value in taxonomy["education_paths"]]
     profile.prefers_alumni = current_user.role == "mentee" and bool(request.form.get("prefers_alumni"))
-    profile.interests = request.form.get("interests", "").strip()
-    profile.looking_for = request.form.get("looking_for", "").strip()
+    for key in Industry_Relevant_Prompt_Data[current_user.role]:  # only this role's prompts are on the form
+        setattr(profile, key, request.form.get(key, "").strip())
 
     answers = {key: request.form.get(key, "").strip()
                for key, _ in Personality_Questions_Data[current_user.role]}
@@ -280,12 +284,17 @@ def update_application():
     return redirect(url_for("main.update_application"))
 
 
-def _month_calendar(meetings: list[Meeting]) -> dict:
-    """This month as weeks of day numbers (0 = padding), with what falls on each day: module sessions,
-    pre-/post-work due dates (mentees only), and the user's meetings. Each item is (kind, label, url)."""
+def _month_calendar(meetings: list[Meeting], month: str | None = None) -> dict:
+    """A month ("YYYY-MM", default this one) as weeks of day numbers (0 = padding), with what falls on
+    each day: module sessions, pre-/post-work due dates (mentees only), and the user's meetings.
+    Each item is (kind, label, url)."""
     today = utcnow().date()
-    start = today.replace(day=1)
+    try:
+        start = datetime.strptime(month, "%Y-%m").date() if month else today.replace(day=1)
+    except ValueError:
+        start = today.replace(day=1)
     end = (start + timedelta(days=32)).replace(day=1)
+    prev = (start - timedelta(days=1)).replace(day=1)
     dated: list[tuple] = []
     for e in db.session.query(Event).order_by(Event.starts_at):
         url = url_for("program.module", event_id=e.id)
@@ -303,8 +312,9 @@ def _month_calendar(meetings: list[Meeting]) -> dict:
     for when, kind, label, url in sorted(dated, key=lambda row: row[0]):
         if start <= when.date() < end:
             by_day.setdefault(when.day, []).append((kind, label, url))
-    weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(today.year, today.month)
-    return {"title": today.strftime("%B %Y"), "today": today.day, "weeks": weeks, "days": by_day}
+    weeks = calendar.Calendar(firstweekday=6).monthdayscalendar(start.year, start.month)
+    return {"title": start.strftime("%B %Y"), "today": today.day if start == today.replace(day=1) else None,
+            "weeks": weeks, "days": by_day, "prev": f"{prev:%Y-%m}", "next": f"{end:%Y-%m}"}
 
 
 # Cloud Run's front end swallows /healthz, so /health is the one to hit there.
@@ -313,6 +323,18 @@ def _month_calendar(meetings: list[Meeting]) -> dict:
 def healthz():
     db.session.execute(db.text("SELECT 1"))
     return {"ok": True}
+
+
+@bp.get("/calendar/<int:user_id>/<token>.ics")
+def calendar_feed(user_id: int, token: str):
+    """The user's private calendar feed for Google Calendar (or any calendar app) to subscribe to.
+    No login: the token in the URL is the secret."""
+    user = db.get_or_404(User, user_id)
+    if not user.is_active or not hmac.compare_digest(token, ics.feed_token(user)):
+        abort(404)
+    body = ics.calendar(ics.items_for(user), name="Spartan Mentorship")
+    return current_app.response_class(body, mimetype="text/calendar",
+                                      headers={"Content-Disposition": "inline; filename=mentorship.ics"})
 
 
 @bp.post("/internal/cron/reminders")
